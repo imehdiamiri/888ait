@@ -1,5 +1,23 @@
 // Background script for handling extension actions
 
+// Inject content script when extension icon is clicked
+chrome.action.onClicked.addListener(async (tab) => {
+    try {
+        // Inject content script and CSS into the active tab
+        await chrome.scripting.executeScript({
+            target: { tabId: tab.id },
+            files: ['content.js']
+        });
+        
+        await chrome.scripting.insertCSS({
+            target: { tabId: tab.id },
+            files: ['content.css']
+        });
+    } catch (error) {
+        console.error('Error injecting scripts:', error);
+    }
+});
+
 // Listen for messages from content script and options
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (request.action === 'openOptions') {

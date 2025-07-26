@@ -24,22 +24,14 @@
     "page": "options.html",
     "open_in_tab": true
   },
-  "permissions": ["activeTab", "storage", "tabs"],
+  "permissions": ["activeTab", "storage", "scripting"],
   "host_permissions": [
     "https://translate.googleapis.com/*",
-    "https://api.cognitive.microsofttranslator.com/*",
+    "https://api.cognitive.microsofttranslator.com/*", 
     "https://libretranslate.com/*",
     "https://api.mymemory.translated.net/*",
     "https://generativelanguage.googleapis.com/*",
     "https://api.openai.com/*",
-    "https://api.anthropic.com/*",
-    "https://*/*"
-  ],
-  "content_scripts": [
-    {
-      "matches": ["<all_urls>"],
-      "js": ["content.js"],
-      "css": ["content.css"]
-    }
+    "https://api.anthropic.com/*"
   ]
 } 
