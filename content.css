@@ -1,0 +1,40 @@
+/* Additional styles for selection icon */
+#selection-icon {
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+#selection-icon:hover {
+    transform: scale(1.1);
+    transition: transform 0.2s ease;
+} 
+
+/* Popup positioning and bounds */
+#selection-popup {
+    max-width: min(480px, calc(100vw - 20px)) !important;
+    max-height: min(400px, calc(100vh - 20px)) !important;
+    box-sizing: border-box !important;
+    word-wrap: break-word !important;
+    overflow: hidden !important;
+}
+
+/* Ensure popup content doesn't overflow */
+#selection-popup * {
+    box-sizing: border-box !important;
+}
+
+/* Responsive adjustments for small screens */
+@media (max-width: 480px) {
+    #selection-popup {
+        max-width: calc(100vw - 10px) !important;
+        font-size: 13px !important;
+    }
+}
+
+/* Ensure popup stays within viewport bounds */
+#selection-popup {
+    position: fixed !important;
+    z-index: 2147483646 !important;
+    transform: none !important;
+} 

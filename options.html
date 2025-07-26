@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>888 AI Popup Translator</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: #f8fafc;
+            color: #1e293b;
+            line-height: 1.5;
+            padding: 16px;
+        }
+        
+        .container {
+            max-width: 580px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        
+        .header {
+            padding: 20px 24px;
+            border-bottom: 1px solid #e2e8f0;
+            text-align: center;
+        }
+        
+        .header h1 {
+            font-size: 20px;
+            font-weight: 700;
+            color: #0f172a;
+            margin-bottom: 4px;
+        }
+        
+        .header p {
+            font-size: 14px;
+            color: #64748b;
+        }
+        
+        .section {
+            padding: 24px;
+            border-bottom: 1px solid #f1f5f9;
+        }
+        
+        .section:last-child {
+            border-bottom: none;
+        }
+        
+        .section-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: #0f172a;
+            margin-bottom: 16px;
+        }
+        
+        .option-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+        }
+        
+        .option-row:last-child {
+            margin-bottom: 0;
+        }
+        
+        .option-label {
+            font-size: 14px;
+            color: #475569;
+            font-weight: 500;
+        }
+        
+        select, input {
+            border: 1px solid #d1d5db;
+            border-radius: 6px;
+            padding: 8px 12px;
+            font-size: 14px;
+            background: white;
+            color: #374151;
+            min-width: 180px;
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+        
+        select:focus, input:focus {
+            outline: none;
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+        }
+        
+        .engine-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin-top: 8px;
+        }
+        
+        .engine-option {
+            border: 2px solid #e5e7eb;
+            border-radius: 8px;
+            padding: 16px;
+            cursor: pointer;
+            transition: all 0.2s;
+            background: #fafafa;
+        }
+        
+        .engine-option:hover {
+            border-color: #cbd5e1;
+            background: white;
+        }
+        
+        .engine-option.selected {
+            border-color: #3b82f6;
+            background: #eff6ff;
+        }
+        
+        .engine-name {
+            font-weight: 600;
+            font-size: 14px;
+            margin-bottom: 4px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        
+        .engine-badge {
+            font-size: 10px;
+            padding: 2px 6px;
+            border-radius: 10px;
+            font-weight: 600;
+        }
+        
+        .badge-free {
+            background: #dcfce7;
+            color: #16a34a;
+        }
+        
+        .badge-ai {
+            background: #ddd6fe;
+            color: #7c3aed;
+        }
+        
+        .engine-desc {
+            font-size: 12px;
+            color: #6b7280;
+        }
+        
+        .api-config {
+            margin-top: 12px;
+            padding: 12px;
+            background: #f8fafc;
+            border-radius: 6px;
+            display: none;
+        }
+        
+        .engine-option.selected .api-config {
+            display: block;
+        }
+        
+        .api-input {
+            width: 100%;
+            margin-top: 4px;
+            font-size: 13px;
+        }
+        
+        .setup-link {
+            font-size: 11px;
+            color: #3b82f6;
+            text-decoration: none;
+            margin-top: 4px;
+            display: inline-block;
+        }
+        
+        .setup-link:hover {
+            text-decoration: underline;
+        }
+        
+        .toggle-switch {
+            width: 40px;
+            height: 22px;
+            background: #d1d5db;
+            border-radius: 11px;
+            position: relative;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        
+        .toggle-switch.active {
+            background: #3b82f6;
+        }
+        
+        .toggle-switch .slider {
+            width: 18px;
+            height: 18px;
+            background: white;
+            border-radius: 50%;
+            position: absolute;
+            top: 2px;
+            left: 2px;
+            transition: transform 0.2s;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.2);
+        }
+        
+        .toggle-switch.active .slider {
+            transform: translateX(18px);
+        }
+        
+        .save-button {
+            background: #3b82f6;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: all 0.2s;
+            margin: 20px 24px;
+            width: calc(100% - 48px);
+        }
+        
+        .save-button:hover {
+            background: #2563eb;
+            transform: translateY(-1px);
+        }
+        
+        .save-button:disabled {
+            background: #9ca3af;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .status-message {
+            text-align: center;
+            margin: 16px 24px;
+            padding: 12px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 500;
+        }
+        
+        .status-message.success {
+            background: #dcfce7;
+            color: #16a34a;
+            border: 1px solid #bbf7d0;
+        }
+        
+        .status-message.error {
+            background: #fef2f2;
+            color: #dc2626;
+            border: 1px solid #fecaca;
+        }
+        
+        .radio-input {
+            display: none;
+        }
+        
+        @media (max-width: 600px) {
+            .container {
+                margin: 8px;
+                border-radius: 8px;
+            }
+            
+            .engine-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .option-row {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 8px;
+            }
+            
+            select, input {
+                min-width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>888 AI Popup Translator</h1>
+        </div>
+        
+        <!-- Language Settings -->
+        <div class="section">
+            <div class="section-title">Language</div>
+            
+            <div class="option-row">
+                <div class="option-label">Target Language</div>
+                    <select id="default-target-lang">
+                    <!-- Popular Languages -->
+                    <option value="fa">🇮🇷 Persian</option>
+                    <option value="en">🇺🇸 English</option>
+                    <option value="ar">🇸🇦 Arabic</option>
+                    <option value="zh">🇨🇳 Chinese</option>
+                    <option value="zh-cn">🇨🇳 Chinese (Simplified)</option>
+                    <option value="zh-tw">🇹🇼 Chinese (Traditional)</option>
+                    <option value="fr">🇫🇷 French</option>
+                    <option value="de">🇩🇪 German</option>
+                    <option value="es">🇪🇸 Spanish</option>
+                    <option value="ja">🇯🇵 Japanese</option>
+                    <option value="ko">🇰🇷 Korean</option>
+                    <option value="ru">🇷🇺 Russian</option>
+                    <option value="pt">🇵🇹 Portuguese</option>
+                    <option value="it">🇮🇹 Italian</option>
+                    <option value="hi">🇮🇳 Hindi</option>
+                    <option value="tr">🇹🇷 Turkish</option>
+                    <option value="th">🇹🇭 Thai</option>
+                    <option value="vi">🇻🇳 Vietnamese</option>
+                    <option value="ur">🇵🇰 Urdu</option>
+                    <option value="bn">🇧🇩 Bengali</option>
+                    
+                    <!-- European Languages -->
+                    <option value="nl">🇳🇱 Dutch</option>
+                    <option value="sv">🇸🇪 Swedish</option>
+                    <option value="da">🇩🇰 Danish</option>
+                    <option value="no">🇳🇴 Norwegian</option>
+                    <option value="fi">🇫🇮 Finnish</option>
+                    <option value="pl">🇵🇱 Polish</option>
+                    <option value="cs">🇨🇿 Czech</option>
+                    <option value="sk">🇸🇰 Slovak</option>
+                    <option value="hu">🇭🇺 Hungarian</option>
+                    <option value="ro">🇷🇴 Romanian</option>
+                    <option value="bg">🇧🇬 Bulgarian</option>
+                    <option value="hr">🇭🇷 Croatian</option>
+                    <option value="sr">🇷🇸 Serbian</option>
+                    <option value="sl">🇸🇮 Slovenian</option>
+                    <option value="el">🇬🇷 Greek</option>
+                    <option value="uk">🇺🇦 Ukrainian</option>
+                    <option value="be">🇧🇾 Belarusian</option>
+                    <option value="lt">🇱🇹 Lithuanian</option>
+                    <option value="lv">🇱🇻 Latvian</option>
+                    <option value="et">🇪🇪 Estonian</option>
+                    
+                    <!-- Asian Languages -->
+                    <option value="id">🇮🇩 Indonesian</option>
+                    <option value="ms">🇲🇾 Malay</option>
+                    <option value="tl">🇵🇭 Filipino</option>
+                    <option value="ta">🇮🇳 Tamil</option>
+                    <option value="te">🇮🇳 Telugu</option>
+                    <option value="kn">🇮🇳 Kannada</option>
+                    <option value="ml">🇮🇳 Malayalam</option>
+                    <option value="gu">🇮🇳 Gujarati</option>
+                    <option value="pa">🇮🇳 Punjabi</option>
+                    <option value="mr">🇮🇳 Marathi</option>
+                    <option value="ne">🇳🇵 Nepali</option>
+                    <option value="si">🇱🇰 Sinhala</option>
+                    <option value="my">🇲🇲 Myanmar</option>
+                    <option value="km">🇰🇭 Khmer</option>
+                    <option value="lo">🇱🇦 Lao</option>
+                    <option value="ka">🇬🇪 Georgian</option>
+                    <option value="hy">🇦🇲 Armenian</option>
+                    <option value="az">🇦🇿 Azerbaijani</option>
+                    <option value="kk">🇰🇿 Kazakh</option>
+                    <option value="ky">🇰🇬 Kyrgyz</option>
+                    <option value="uz">🇺🇿 Uzbek</option>
+                    <option value="tk">🇹🇲 Turkmen</option>
+                    <option value="tg">🇹🇯 Tajik</option>
+                    <option value="mn">🇲🇳 Mongolian</option>
+                    
+                    <!-- Middle Eastern & African Languages -->
+                    <option value="he">🇮🇱 Hebrew</option>
+                    <option value="ku">🏴 Kurdish</option>
+                    <option value="ps">🇦🇫 Pashto</option>
+                    <option value="sw">🇰🇪 Swahili</option>
+                    <option value="am">🇪🇹 Amharic</option>
+                    <option value="ha">🇳🇬 Hausa</option>
+                    <option value="yo">🇳🇬 Yoruba</option>
+                    <option value="ig">🇳🇬 Igbo</option>
+                    <option value="zu">🇿🇦 Zulu</option>
+                    <option value="xh">🇿🇦 Xhosa</option>
+                    <option value="af">🇿🇦 Afrikaans</option>
+                    
+                    <!-- Other Languages -->
+                    <option value="sq">🇦🇱 Albanian</option>
+                    <option value="eu">🇪🇸 Basque</option>
+                    <option value="ca">🇪🇸 Catalan</option>
+                    <option value="cy">🏴󠁧󠁢󠁷󠁬󠁳󠁿 Welsh</option>
+                    <option value="ga">🇮🇪 Irish</option>
+                    <option value="is">🇮🇸 Icelandic</option>
+                    <option value="mt">🇲🇹 Maltese</option>
+                    <option value="eo">🌍 Esperanto</option>
+                    <option value="la">⛪ Latin</option>
+                    </select>
+            </div>
+        </div>
+        
+        <!-- Translation Engine -->
+        <div class="section">
+            <div class="section-title">Translation Engine</div>
+            <!-- Engine Selector -->
+            <div class="option-row">
+                <div class="option-label" style="margin-right: 12px;">Select Engine</div>
+                <select id="engine-selector" style="flex: 1; padding: 8px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px;">
+                    <option value="free">🆓 Free Engine (Google Translate)</option>
+                    <option value="gemini">🤖 Gemini AI (Advanced AI)</option>
+                    <option value="openai">🧠 OpenAI GPT (Premium AI)</option>
+                    <option value="anthropic">🎯 Claude AI (Accurate AI)</option>
+                    </select>
+            </div>
+            
+            <!-- Engine Configuration -->
+            <div id="engine-config" style="margin-top: 15px; padding: 15px; background: #f8fafc; border-radius: 8px; border: 1px solid #e2e8f0;">
+                
+                <!-- Free Engine Config -->
+                <div id="free-config" class="engine-config-section" style="display: none;">
+                    <div style="text-align: center; color: #16a34a; font-weight: 500; margin-bottom: 10px;">
+                        ✅ Ready to use - No setup required
+                    </div>
+                    <p style="color: #64748b; font-size: 13px; line-height: 1.4;">
+                        Uses Google Translate service. No API key needed. Perfect for basic translation needs.
+                    </p>
+                </div>
+                
+                <!-- Gemini AI Config -->
+                <div id="gemini-config" class="engine-config-section" style="display: none;">
+                    <div style="color: #1e40af; font-weight: 600; margin-bottom: 10px;">🤖 Gemini AI Setup</div>
+                    <div style="margin-bottom: 10px;">
+                        <input type="password" id="gemini-api-key" class="api-input" placeholder="Enter Gemini API key" style="width: 100%; padding: 8px; border: 1px solid #d1d5db; border-radius: 4px; font-size: 13px;">
+                    </div>
+                    <div style="margin-bottom: 10px;">
+                        <a href="https://makersuite.google.com/app/apikey" target="_blank" class="setup-link" style="color: #3b82f6; text-decoration: none; font-weight: 500;">
+                            🔗 Get FREE Gemini API Key
+                        </a>
+                    </div>
+                    <div style="color: #64748b; font-size: 12px; line-height: 1.4;">
+                        <strong>How to get API key:</strong><br>
+                        1. Visit Google AI Studio (link above)<br>
+                        2. Sign in with Google account<br>
+                        3. Click "Get API key" → "Create API key"<br>
+                        4. Copy the key and paste it here<br>
+                        <em>Note: Gemini offers generous free tier with high daily limits</em>
+                    </div>
+                </div>
+                
+                <!-- OpenAI Config -->
+                <div id="openai-config" class="engine-config-section" style="display: none;">
+                    <div style="color: #1e40af; font-weight: 600; margin-bottom: 10px;">🧠 OpenAI GPT Setup</div>
+                    <div style="margin-bottom: 10px;">
+                        <input type="password" id="openai-api-key" class="api-input" placeholder="Enter OpenAI API key" style="width: 100%; padding: 8px; border: 1px solid #d1d5db; border-radius: 4px; font-size: 13px;">
+                    </div>
+                    <div style="margin-bottom: 10px;">
+                        <a href="https://platform.openai.com/api-keys" target="_blank" class="setup-link" style="color: #3b82f6; text-decoration: none; font-weight: 500;">
+                            🔗 Get OpenAI API Key (Paid)
+                        </a>
+                    </div>
+                    <div style="color: #64748b; font-size: 12px; line-height: 1.4;">
+                        <strong>How to get API key:</strong><br>
+                        1. Visit OpenAI Platform (link above)<br>
+                        2. Sign up/Sign in to your account<br>
+                        3. Add billing information (required)<br>
+                        4. Go to API Keys → Create new key<br>
+                        5. Copy the key and paste it here<br>
+                        <em>Note: OpenAI is a paid service. Check pricing at openai.com/pricing</em>
+            </div>
+                </div>
+                
+                <!-- Anthropic Config -->
+                <div id="anthropic-config" class="engine-config-section" style="display: none;">
+                    <div style="color: #1e40af; font-weight: 600; margin-bottom: 10px;">🎯 Claude AI Setup</div>
+                    <div style="margin-bottom: 10px;">
+                        <input type="password" id="anthropic-api-key" class="api-input" placeholder="Enter Anthropic API key" style="width: 100%; padding: 8px; border: 1px solid #d1d5db; border-radius: 4px; font-size: 13px;">
+                    </div>
+                    <div style="margin-bottom: 10px;">
+                        <a href="https://console.anthropic.com/" target="_blank" class="setup-link" style="color: #3b82f6; text-decoration: none; font-weight: 500;">
+                            🔗 Get Anthropic API Key
+                        </a>
+                    </div>
+                    <div style="color: #64748b; font-size: 12px; line-height: 1.4;">
+                        <strong>How to get API key:</strong><br>
+                        1. Visit Anthropic Console (link above)<br>
+                        2. Create account or sign in<br>
+                        3. Add billing information<br>
+                        4. Go to API Keys → Create Key<br>
+                        5. Copy the key and paste it here<br>
+                        <em>Note: Anthropic offers $5 free credit for new users, then paid service</em>
+                    </div>
+                </div>
+                
+            </div>
+        </div>
+        
+        <!-- Interface Settings -->
+        <div class="section">
+            <div class="section-title">Interface</div>
+            
+            <div class="option-row">
+                <div class="option-label">Font Size</div>
+                <select id="font-size">
+                    <option value="12">Small</option>
+                    <option value="14">Medium</option>
+                    <option value="16">Large</option>
+                    <option value="18">Extra Large</option>
+                </select>
+            </div>
+            
+            <div class="option-row">
+                <div class="option-label">Text-to-Speech</div>
+                <div class="toggle-switch active" id="text-to-speech-toggle">
+                    <div class="slider"></div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="status-message" id="status-message" style="display: none;"></div>
+        
+        <!-- Save and Default buttons side by side -->
+        <div style="display: flex; gap: 12px; justify-content: center; margin-top: 20px;">
+            <button class="save-button" id="save-settings" style="flex: 1; max-width: 150px;">Save Settings</button>
+            <button class="save-button" id="reset-defaults" style="background: #e5e7eb; color: #1e40af; flex: 1; max-width: 150px;">Default</button>
+        </div>
+        
+        <!-- Author Credit -->
+        <div style="text-align: center; padding: 20px; border-top: 1px solid #e2e8f0; margin-top: 20px; background: #f8fafc;">
+            <p style="color: #64748b; font-size: 12px; margin-bottom: 4px;">Created by</p>
+            <p style="color: #1e40af; font-weight: 600; font-size: 14px;">Mehdi Amiri</p>
+            <div style="color: #64748b; font-size: 11px; margin-top: 8px; display: flex; justify-content: center; gap: 15px;">
+                <a href="https://instagram.com/imehdi" target="_blank" style="color: #e91e63; text-decoration: none;">
+                    📷 Instagram
+                </a>
+            </div>
+        </div>
+    </div>
+    
+    <script src="options.js"></script>
+</body>
+</html> 
