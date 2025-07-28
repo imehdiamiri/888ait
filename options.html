@@ -29,7 +29,7 @@
         }
         
         .header {
-            padding: 20px 24px;
+            padding: 16px 20px;
             border-bottom: 1px solid #e2e8f0;
             text-align: center;
         }
@@ -47,7 +47,7 @@
         }
         
         .section {
-            padding: 24px;
+            padding: 12px 16px;
             border-bottom: 1px solid #f1f5f9;
         }
         
@@ -59,14 +59,14 @@
             font-size: 16px;
             font-weight: 600;
             color: #0f172a;
-            margin-bottom: 16px;
+            margin-bottom: 12px;
         }
         
         .option-row {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 16px;
+            margin-bottom: 10px;
         }
         
         .option-row:last-child {
@@ -293,7 +293,7 @@
         
         <!-- Language Settings -->
         <div class="section">
-            <div class="section-title">Language</div>
+    
             
             <div class="option-row">
                 <div class="option-label">Target Language</div>
@@ -397,7 +397,7 @@
         
         <!-- Translation Engine -->
         <div class="section">
-            <div class="section-title">Translation Engine</div>
+    
             <!-- Engine Selector -->
             <div class="option-row">
                 <div class="option-label" style="margin-right: 12px;">Select Engine</div>
@@ -515,13 +515,153 @@
         <div class="status-message" id="status-message" style="display: none;"></div>
         
         <!-- Save and Default buttons side by side -->
-        <div style="display: flex; gap: 12px; justify-content: center; margin-top: 20px;">
-            <button class="save-button" id="save-settings" style="flex: 1; max-width: 150px;">Save Settings</button>
-            <button class="save-button" id="reset-defaults" style="background: #e5e7eb; color: #1e40af; flex: 1; max-width: 150px;">Default</button>
+        <div style="display: flex; gap: 8px; justify-content: center; margin: 8px 16px 12px 16px;">
+            <button class="save-button" id="save-settings" style="flex: 1; max-width: 120px; padding: 8px 16px; font-size: 13px;">Save</button>
+            <button class="save-button" id="reset-defaults" style="background: #e5e7eb; color: #1e40af; flex: 1; max-width: 120px; padding: 8px 16px; font-size: 13px;">Default</button>
         </div>
         
+        <!-- Donate Section -->
+        <div style="text-align: center; padding: 16px; border-top: 1px solid #e2e8f0; margin-top: 16px; background: #f0f9ff;">
+            <div style="display: flex; align-items: center; justify-content: center; gap: 8px; margin-bottom: 16px;">
+                <span style="font-size: 24px;">💝</span>
+                <h3 style="color: #1e40af; font-weight: 600; font-size: 16px; margin: 0;">Support Development</h3>
+            </div>
+            <p style="color: #64748b; font-size: 13px; margin-bottom: 16px; line-height: 1.4;">
+                If this extension helps you, consider supporting its development with a crypto donation
+            </p>
+            
+                            <div style="background: white; border-radius: 8px; padding: 16px; margin-bottom: 12px; border: 1px solid #e2e8f0;">
+                    <div style="display: grid; grid-template-columns: 1fr; gap: 12px; font-size: 12px;">
+                        <div class="crypto-item" data-address="TEZrH7kkbGoSvsUUxh4ossyCUbW4WMdXzM" data-name="USDT (TRC20)" style="display: flex; justify-content: space-between; align-items: center; padding: 8px; background: #f8fafc; border-radius: 4px; cursor: pointer; transition: all 0.2s;" title="Click to copy address">
+                            <div style="flex: 1;">
+                                <div style="font-weight: 600; color: #475569; margin-bottom: 4px;">USDT (TRC20):</div>
+                                <div style="font-family: monospace; color: #1e40af; font-size: 11px; word-break: break-all;">
+                                    TEZrH7kkbGoSvsUUxh4ossyCUbW4WMdXzM
+                                </div>
+                            </div>
+                            <div style="display: flex; align-items: center; gap: 8px; margin-left: 8px;">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="2">
+                                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                                </svg>
+                                <div class="qr-btn" data-address="TEZrH7kkbGoSvsUUxh4ossyCUbW4WMdXzM" data-name="USDT (TRC20)" style="cursor: pointer; padding: 6px; border-radius: 4px; transition: all 0.2s; background: #3b82f6; color: white;" title="Show QR Code">
+                                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <rect x="3" y="3" width="5" height="5"></rect>
+                                        <rect x="16" y="3" width="5" height="5"></rect>
+                                        <rect x="3" y="16" width="5" height="5"></rect>
+                                        <path d="M21 16h-3a2 2 0 0 0-2 2v3"></path>
+                                        <path d="M21 21v.01"></path>
+                                        <path d="M12 7v3a2 2 0 0 1-2 2H7"></path>
+                                        <path d="M3 12h.01"></path>
+                                        <path d="M12 3h.01"></path>
+                                        <path d="M12 16v.01"></path>
+                                        <path d="M16 12h1"></path>
+                                        <path d="M21 12v.01"></path>
+                                        <path d="M12 21v-1"></path>
+                                    </svg>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="crypto-item" data-address="0xe160639f71A0A7b3eBf26BCEF2D302C2C03817f7" data-name="USDT (ERC20)" style="display: flex; justify-content: space-between; align-items: center; padding: 8px; background: #f8fafc; border-radius: 4px; cursor: pointer; transition: all 0.2s;" title="Click to copy address">
+                            <div style="flex: 1;">
+                                <div style="font-weight: 600; color: #475569; margin-bottom: 4px;">USDT (ERC20):</div>
+                                <div style="font-family: monospace; color: #1e40af; font-size: 11px; word-break: break-all;">
+                                    0xe160639f71A0A7b3eBf26BCEF2D302C2C03817f7
+                                </div>
+                            </div>
+                            <div style="display: flex; align-items: center; gap: 8px; margin-left: 8px;">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="2">
+                                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                                </svg>
+                                <div class="qr-btn" data-address="0xe160639f71A0A7b3eBf26BCEF2D302C2C03817f7" data-name="USDT (ERC20)" style="cursor: pointer; padding: 6px; border-radius: 4px; transition: all 0.2s; background: #3b82f6; color: white;" title="Show QR Code">
+                                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <rect x="3" y="3" width="5" height="5"></rect>
+                                        <rect x="16" y="3" width="5" height="5"></rect>
+                                        <rect x="3" y="16" width="5" height="5"></rect>
+                                        <path d="M21 16h-3a2 2 0 0 0-2 2v3"></path>
+                                        <path d="M21 21v.01"></path>
+                                        <path d="M12 7v3a2 2 0 0 1-2 2H7"></path>
+                                        <path d="M3 12h.01"></path>
+                                        <path d="M12 3h.01"></path>
+                                        <path d="M12 16v.01"></path>
+                                        <path d="M16 12h1"></path>
+                                        <path d="M21 12v.01"></path>
+                                        <path d="M12 21v-1"></path>
+                                    </svg>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="crypto-item" data-address="bc1q2sfafhrpytkc7y79z60yx8m6t58duk4e9kghm3" data-name="Bitcoin (BTC)" style="display: flex; justify-content: space-between; align-items: center; padding: 8px; background: #f8fafc; border-radius: 4px; cursor: pointer; transition: all 0.2s;" title="Click to copy address">
+                            <div style="flex: 1;">
+                                <div style="font-weight: 600; color: #475569; margin-bottom: 4px;">Bitcoin (BTC):</div>
+                                <div style="font-family: monospace; color: #1e40af; font-size: 11px; word-break: break-all;">
+                                    bc1q2sfafhrpytkc7y79z60yx8m6t58duk4e9kghm3
+                                </div>
+                            </div>
+                            <div style="display: flex; align-items: center; gap: 8px; margin-left: 8px;">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="2">
+                                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                                </svg>
+                                <div class="qr-btn" data-address="bc1q2sfafhrpytkc7y79z60yx8m6t58duk4e9kghm3" data-name="Bitcoin (BTC)" style="cursor: pointer; padding: 6px; border-radius: 4px; transition: all 0.2s; background: #3b82f6; color: white;" title="Show QR Code">
+                                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <rect x="3" y="3" width="5" height="5"></rect>
+                                        <rect x="16" y="3" width="5" height="5"></rect>
+                                        <rect x="3" y="16" width="5" height="5"></rect>
+                                        <path d="M21 16h-3a2 2 0 0 0-2 2v3"></path>
+                                        <path d="M21 21v.01"></path>
+                                        <path d="M12 7v3a2 2 0 0 1-2 2H7"></path>
+                                        <path d="M3 12h.01"></path>
+                                        <path d="M12 3h.01"></path>
+                                        <path d="M12 16v.01"></path>
+                                        <path d="M16 12h1"></path>
+                                        <path d="M21 12v.01"></path>
+                                        <path d="M12 21v-1"></path>
+                                    </svg>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="crypto-item" data-address="0xe160639f71A0A7b3eBf26BCEF2D302C2C03817f7" data-name="Ethereum (ETH)" style="display: flex; justify-content: space-between; align-items: center; padding: 8px; background: #f8fafc; border-radius: 4px; cursor: pointer; transition: all 0.2s;" title="Click to copy address">
+                            <div style="flex: 1;">
+                                <div style="font-weight: 600; color: #475569; margin-bottom: 4px;">Ethereum (ETH):</div>
+                                <div style="font-family: monospace; color: #1e40af; font-size: 11px; word-break: break-all;">
+                                    0xe160639f71A0A7b3eBf26BCEF2D302C2C03817f7
+                                </div>
+                            </div>
+                            <div style="display: flex; align-items: center; gap: 8px; margin-left: 8px;">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="2">
+                                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                                </svg>
+                                <div class="qr-btn" data-address="0xe160639f71A0A7b3eBf26BCEF2D302C2C03817f7" data-name="Ethereum (ETH)" style="cursor: pointer; padding: 6px; border-radius: 4px; transition: all 0.2s; background: #3b82f6; color: white;" title="Show QR Code">
+                                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <rect x="3" y="3" width="5" height="5"></rect>
+                                        <rect x="16" y="3" width="5" height="5"></rect>
+                                        <rect x="3" y="16" width="5" height="5"></rect>
+                                        <path d="M21 16h-3a2 2 0 0 0-2 2v3"></path>
+                                        <path d="M21 21v.01"></path>
+                                        <path d="M12 7v3a2 2 0 0 1-2 2H7"></path>
+                                        <path d="M3 12h.01"></path>
+                                        <path d="M12 3h.01"></path>
+                                        <path d="M12 16v.01"></path>
+                                        <path d="M16 12h1"></path>
+                                        <path d="M21 12v.01"></path>
+                                        <path d="M12 21v-1"></path>
+                                    </svg>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            
+            <p style="color: #64748b; font-size: 11px; margin: 0;">
+                Click any address to copy • Every donation helps improve the extension
+            </p>
+        </div>
+
         <!-- Author Credit -->
-        <div style="text-align: center; padding: 20px; border-top: 1px solid #e2e8f0; margin-top: 20px; background: #f8fafc;">
+        <div style="text-align: center; padding: 16px; border-top: 1px solid #e2e8f0; background: #f8fafc;">
             <p style="color: #64748b; font-size: 12px; margin-bottom: 4px;">Created by</p>
             <p style="color: #1e40af; font-weight: 600; font-size: 14px;">Mehdi Amiri</p>
             <div style="color: #64748b; font-size: 11px; margin-top: 8px; display: flex; justify-content: center; gap: 15px;">

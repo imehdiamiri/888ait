@@ -244,7 +244,154 @@ document.addEventListener('DOMContentLoaded', () => {
     setupEventListeners();
     loadAndApplySettings();
     setupDefaultButton();
+    setupDonationHandlers();
 });
+
+// Copy crypto address to clipboard
+function copyToClipboard(text) {
+    return navigator.clipboard.writeText(text).then(() => {
+        return true;
+    }).catch(err => {
+        console.error('Could not copy text: ', err);
+        // Fallback for older browsers
+        const textArea = document.createElement('textarea');
+        textArea.value = text;
+        document.body.appendChild(textArea);
+        textArea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textArea);
+        return true;
+    });
+}
+
+// Add visual feedback to crypto items
+function addCopiedFeedback(element) {
+    const originalBg = element.style.background;
+    element.style.background = '#dcfce7';
+    element.style.borderColor = '#16a34a';
+    
+    // Show "Copied!" message
+    const feedbackDiv = document.createElement('div');
+    feedbackDiv.textContent = '✅ Copied!';
+    feedbackDiv.style.cssText = 'position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: #16a34a; color: white; padding: 4px 8px; border-radius: 4px; font-size: 10px; z-index: 1000; pointer-events: none;';
+    
+    element.style.position = 'relative';
+    element.appendChild(feedbackDiv);
+    
+    setTimeout(() => {
+        element.style.background = originalBg;
+        element.style.borderColor = '';
+        if (feedbackDiv.parentNode) {
+            feedbackDiv.parentNode.removeChild(feedbackDiv);
+        }
+    }, 2000);
+}
+
+// Show QR code for crypto address
+function showQRCode(address, name) {
+    // Create QR dialog
+    const qrDialog = document.createElement('div');
+    qrDialog.style.cssText = `
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        background: white;
+        border-radius: 12px;
+        box-shadow: 0 20px 40px rgba(0,0,0,0.3);
+        z-index: 10001;
+        text-align: center;
+        padding: 24px;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    `;
+    
+    qrDialog.innerHTML = `
+        <h3 style="margin: 0 0 16px; color: #1e293b; font-size: 18px;">${name}</h3>
+        <img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(address)}" 
+             style="width: 200px; height: 200px; border: 1px solid #e2e8f0; border-radius: 8px;" alt="QR Code" />
+        <p style="margin: 16px 0 8px; font-size: 12px; color: #64748b; word-break: break-all; font-family: monospace;">${address}</p>
+        <button id="close-qr-btn" style="background: #dc3545; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 12px; margin-top: 8px;">Close</button>
+    `;
+    
+    // Create backdrop
+    const backdrop = document.createElement('div');
+    backdrop.className = 'qr-backdrop';
+    backdrop.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.5);
+        z-index: 10000;
+    `;
+    
+    const closeQR = () => {
+        try {
+            if (backdrop.parentNode) document.body.removeChild(backdrop);
+            if (qrDialog.parentNode) document.body.removeChild(qrDialog);
+        } catch (e) {
+            console.log('QR dialog cleanup error:', e);
+        }
+    };
+    
+    backdrop.onclick = closeQR;
+    qrDialog.querySelector('#close-qr-btn').onclick = closeQR;
+    
+    document.body.appendChild(backdrop);
+    document.body.appendChild(qrDialog);
+}
+
+// Setup donation functionality
+function setupDonationHandlers() {
+    const cryptoItems = document.querySelectorAll('.crypto-item');
+    cryptoItems.forEach(item => {
+        item.addEventListener('click', function(e) {
+            // Prevent QR button from triggering copy
+            if (e.target.closest('.qr-btn')) return;
+            
+            const address = this.getAttribute('data-address');
+            const name = this.getAttribute('data-name');
+            
+            copyToClipboard(address).then(() => {
+                addCopiedFeedback(this);
+            });
+        });
+        
+        // Add hover effect
+        item.addEventListener('mouseenter', function() {
+            this.style.background = '#e0f2fe';
+            this.style.borderColor = '#0891b2';
+        });
+        
+        item.addEventListener('mouseleave', function() {
+            this.style.background = '#f8fafc';
+            this.style.borderColor = '';
+        });
+    });
+    
+    // Setup QR button handlers
+    const qrBtns = document.querySelectorAll('.qr-btn');
+    qrBtns.forEach(btn => {
+        btn.addEventListener('click', function(e) {
+            e.stopPropagation(); // Prevent copy from triggering
+            const address = this.getAttribute('data-address');
+            const name = this.getAttribute('data-name');
+            showQRCode(address, name);
+        });
+        
+        // Add hover effect
+        btn.addEventListener('mouseenter', function() {
+            this.style.background = '#2563eb';
+            this.style.transform = 'scale(1.05)';
+        });
+        
+        btn.addEventListener('mouseleave', function() {
+            this.style.background = '#3b82f6';
+            this.style.transform = 'scale(1)';
+        });
+    });
+}
 
 // Handle extension startup
 if (document.readyState === 'loading') {

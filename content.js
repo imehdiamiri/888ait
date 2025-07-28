@@ -18,6 +18,173 @@ let isPopupOpening = false;
 let detectedLanguage = '';
 let lastDetectedLanguage = ''; // Store language detected during translation
 let translationTimeout = null;
+
+// Main popup error functions
+function showMainError(message) {
+    const errorSection = document.getElementById('main-error-section');
+    const errorMessage = document.getElementById('main-error-message');
+    
+    if (errorSection && errorMessage) {
+        errorMessage.textContent = message;
+        errorSection.style.display = 'block';
+        
+        // Auto-hide after 5 seconds
+        setTimeout(() => {
+            hideMainError();
+        }, 5000);
+    }
+}
+
+function hideMainError() {
+    const errorSection = document.getElementById('main-error-section');
+    if (errorSection) {
+        errorSection.style.display = 'none';
+    }
+}
+// Function to detect Finglish text (Persian written in Latin script)
+// Uses AI detection when available, falls back to pattern matching for free mode
+async function isFinglishTextAdvanced(text, settings = null) {
+    if (!text || text.length < 5) return false;
+    
+    // Get current settings to check available engines
+    const currentSettings = settings || await getExtensionSettings();
+    const hasAIEngine = currentSettings.geminiApiKey || currentSettings.openaiApiKey || currentSettings.anthropicApiKey;
+    
+    console.log('🔍 Checking Finglish detection method - AI available:', hasAIEngine);
+    
+    if (hasAIEngine) {
+        // Use AI-powered Finglish detection
+        return await detectFinglishWithAI(text, currentSettings);
+    } else {
+        // Use pattern-based detection for free mode
+        return detectFinglishWithPatterns(text);
+    }
+}
+
+// AI-powered Finglish detection (most accurate)
+async function detectFinglishWithAI(text, settings) {
+    try {
+        console.log('🤖 Using AI Finglish detection for:', text);
+        
+        const prompt = `Analyze this text and determine if it's "Finglish" (Persian/Farsi words written in Latin/English alphabet).
+
+Text: "${text}"
+
+Instructions:
+- If the text contains Persian/Farsi words written in Latin alphabet (like "salam", "che khabar", "mikham"), respond: "FINGLISH"
+- If the text is pure English, respond: "ENGLISH" 
+- If the text is in Persian/Farsi script, respond: "PERSIAN"
+- If the text is in another language, respond: "OTHER"
+
+Respond with only one word: FINGLISH, ENGLISH, PERSIAN, or OTHER`;
+
+        let response;
+        
+        // Try Gemini first (fastest for this task)
+        if (settings.geminiApiKey) {
+            response = await callGeminiForFinglishDetection(prompt, settings.geminiApiKey);
+        } else if (settings.openaiApiKey) {
+            response = await callOpenAIForFinglishDetection(prompt, settings.openaiApiKey);
+        } else if (settings.anthropicApiKey) {
+            response = await callAnthropicForFinglishDetection(prompt, settings.anthropicApiKey);
+        }
+        
+        const result = response?.trim().toUpperCase();
+        const isFinglish = result === 'FINGLISH';
+        
+        console.log(`🤖 AI Finglish detection result: ${result} → ${isFinglish ? 'IS' : 'NOT'} Finglish`);
+        return isFinglish;
+        
+    } catch (error) {
+        console.error('AI Finglish detection failed, falling back to patterns:', error);
+        return detectFinglishWithPatterns(text);
+    }
+}
+
+// Pattern-based Finglish detection (free mode fallback)  
+function detectFinglishWithPatterns(text) {
+    const lowerText = text.toLowerCase();
+    
+    console.log('🔍 Using pattern-based Finglish detection for:', text);
+    
+    // Quick exclusions for obvious English
+    const englishMarkers = /\b(the|and|this|that|what|where|when|how|why|who|which|are|is|was|were|have|has|had|will|would|can|could|should)\b/i;
+    if (englishMarkers.test(lowerText)) {
+        console.log('❌ Contains English markers, not Finglish');
+        return false;
+    }
+    
+    // Strong Finglish indicators (only most obvious ones)
+    const strongFinglishPatterns = [
+        /\b(salam|khodahafez|mikham|nemikham|che|chetor|baba|maman|doost|khoob)\b/i,
+        /\b(khodam|khodet|khodesh)\b/i,
+        /\b\w*(kh|gh)\w*\b/i
+    ];
+    
+    for (const pattern of strongFinglishPatterns) {
+        if (pattern.test(lowerText)) {
+            console.log('✅ Strong Finglish pattern found:', pattern.source);
+            return true;
+        }
+    }
+    
+    console.log('❌ No strong Finglish indicators found');
+    return false;
+}
+
+// AI API calls for Finglish detection
+async function callGeminiForFinglishDetection(prompt, apiKey) {
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${apiKey}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            contents: [{ parts: [{ text: prompt }] }],
+            generationConfig: { maxOutputTokens: 10, temperature: 0 }
+        })
+    });
+    
+    const data = await response.json();
+    return data.candidates?.[0]?.content?.parts?.[0]?.text;
+}
+
+async function callOpenAIForFinglishDetection(prompt, apiKey) {
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+            'Authorization': `Bearer ${apiKey}`,
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            model: 'gpt-3.5-turbo',
+            messages: [{ role: 'user', content: prompt }],
+            max_tokens: 10,
+            temperature: 0
+        })
+    });
+    
+    const data = await response.json();
+    return data.choices?.[0]?.message?.content;
+}
+
+async function callAnthropicForFinglishDetection(prompt, apiKey) {
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+            'x-api-key': apiKey,
+            'Content-Type': 'application/json',
+            'anthropic-version': '2023-06-01'
+        },
+        body: JSON.stringify({
+            model: 'claude-3-haiku-20240307',
+            max_tokens: 10,
+            messages: [{ role: 'user', content: prompt }]
+        })
+    });
+    
+    const data = await response.json();
+    return data.content?.[0]?.text;
+}
+
 let lastUsedAIEngine = null; // Store last AI engine before free mode
 let autoSwitchedToFree = false; // Track if we auto-switched
 let isLanguageChanging = false; // Track if language is being changed to prevent popup refresh
@@ -176,6 +343,7 @@ const languages = {
     'doi': 'Dogri',
     'nl': 'Dutch',
     'en': 'English',
+    'finglish': 'Finglish',
     'eo': 'Esperanto',
     'et': 'Estonian',
     'ee': 'Ewe',
@@ -331,7 +499,7 @@ async function saveLanguagePreferences(sourceLang, targetLang) {
     }
 }
 
-// Update engine name in header
+// Update engine name in footer
 async function updateEngineNameInFooter() {
     if (!popup) return;
     
@@ -341,42 +509,42 @@ async function updateEngineNameInFooter() {
     const settings = currentSettings || await getExtensionSettings();
     const engine = settings.translationEngine || 'free';
     
-    // Format engine name with short summary
-    let engineName;
+    // Format engine name for display
+    let engineDisplayName;
     switch (engine) {
         case 'free':
-            engineName = 'Free';
+            engineDisplayName = 'Free';
             break;
         case 'google':
-            engineName = 'Google';
+            engineDisplayName = 'Google';
             break;
         case 'gemini':
-            engineName = 'Gemini';
+            engineDisplayName = 'Gemini';
             break;
         case 'openai':
             // For OpenAI, try to get the actual model being used
             try {
                 const bestModel = await getBestOpenAIModel(settings.openaiApiKey);
-                engineName = bestModel.includes('gpt-4') ? 'GPT-4' : 
-                            bestModel.includes('gpt-3.5') ? 'GPT-3.5' : 
-                            'OpenAI';
+                engineDisplayName = bestModel.includes('gpt-4') ? 'GPT-4' : 
+                                   bestModel.includes('gpt-3.5') ? 'GPT-3.5' : 
+                                   'OpenAI';
             } catch (error) {
-                engineName = 'OpenAI';
+                engineDisplayName = 'OpenAI';
             }
             break;
         case 'anthropic':
-            engineName = 'Claude';
+            engineDisplayName = 'Claude';
             break;
         default:
-            engineName = engine.charAt(0).toUpperCase() + engine.slice(1);
+            engineDisplayName = engine.charAt(0).toUpperCase() + engine.slice(1);
     }
     
-    engineNameDiv.textContent = engineName;
-    
-    // Update background color based on engine type - all use AI Explain style
-    engineNameDiv.style.background = '#dbeafe';
-    engineNameDiv.style.color = '#1e40af';
-    engineNameDiv.style.border = '1px solid #93c5fd';
+    // Update with new HTML format - gray "Engine:" and blue engine name
+    if (engine === 'free' || engine === 'google') {
+        engineNameDiv.innerHTML = `<span style="color: #6c757d; font-weight: 500;">Engine:</span> <span style="color: #0d6efd; font-weight: 600;">${engineDisplayName}</span> <span style="color: #e67e00; font-weight: 600;">(No AI)</span>`;
+    } else {
+        engineNameDiv.innerHTML = `<span style="color: #6c757d; font-weight: 500;">Engine:</span> <span style="color: #0d6efd; font-weight: 600;">${engineDisplayName}</span>`;
+    }
 }
 
 // Get extension settings from storage
@@ -638,9 +806,20 @@ function createPopup() {
         overflow: hidden;
         backdrop-filter: blur(8px);
         background: rgba(255, 255, 255, 0.95);
+        direction: ltr !important;
+        text-align: left !important;
+        unicode-bidi: normal !important;
     `;
     
     document.body.appendChild(popup);
+}
+
+// Get language display name
+function getLanguageName(langCode) {
+    if (languages[langCode]) {
+        return languages[langCode];
+    }
+    return langCode.toUpperCase();
 }
 
 // Generate language options HTML with proper option text
@@ -717,8 +896,12 @@ async function translateText(text, sourceLang, targetLang) {
 
 // Google Translate engine (free)
 async function translateWithGoogle(text, sourceLang, targetLang, settings) {
+    // Convert Finglish to Persian for translation
+    const actualSourceLang = sourceLang === 'finglish' ? 'fa' : sourceLang;
+    const actualTargetLang = targetLang === 'finglish' ? 'fa' : targetLang;
+    
     // Google Translate API endpoint
-        const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=${sourceLang}&tl=${targetLang}&dt=t&q=${encodeURIComponent(text)}`;
+        const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=${actualSourceLang}&tl=${actualTargetLang}&dt=t&q=${encodeURIComponent(text)}`;
         
     try {
         const response = await fetch(url, {
@@ -736,7 +919,21 @@ async function translateWithGoogle(text, sourceLang, targetLang, settings) {
         
         // Extract detected language and store it globally
         if (sourceLang === 'auto' && data && data[2]) {
-            lastDetectedLanguage = data[2];
+            let detectedLang = data[2];
+            
+            // Check for Finglish (Persian written in Latin script) - async check
+            if (detectedLang === 'en') {
+                try {
+                    const isFinglish = await isFinglishTextAdvanced(text, settings);
+                    if (isFinglish) {
+                        detectedLang = 'finglish';
+                    }
+                } catch (error) {
+                    console.error('Finglish detection error:', error);
+                }
+            }
+            
+            lastDetectedLanguage = detectedLang;
         }
         
         // Extract translation from Google's response format
@@ -767,8 +964,12 @@ async function translateWithGoogle(text, sourceLang, targetLang, settings) {
 
 // Alternative Google Translate method
 async function translateWithGoogleAlternative(text, sourceLang, targetLang) {
+    // Convert Finglish to Persian for translation
+    const actualSourceLang = sourceLang === 'finglish' ? 'fa' : sourceLang;
+    const actualTargetLang = targetLang === 'finglish' ? 'fa' : targetLang;
+    
     // Use a different Google Translate endpoint
-    const url = `https://clients5.google.com/translate_a/t?client=dict-chrome-ex&sl=${sourceLang}&tl=${targetLang}&q=${encodeURIComponent(text)}`;
+    const url = `https://clients5.google.com/translate_a/t?client=dict-chrome-ex&sl=${actualSourceLang}&tl=${actualTargetLang}&q=${encodeURIComponent(text)}`;
     
     const response = await fetch(url, {
         method: 'GET',
@@ -1238,6 +1439,7 @@ async function speakText(text, lang, rate = 1) {
             // Language mapping for better voice selection
             const langMap = {
                 'fa': 'fa-IR',
+                'finglish': 'fa-IR',  // ✅ Finglish should use Persian voice
                 'ar': 'ar-SA', 
                 'en': 'en-US',
                 'es': 'es-ES',
@@ -1251,7 +1453,9 @@ async function speakText(text, lang, rate = 1) {
                 'zh': 'zh-CN'
             };
             
-            const targetLang = langMap[lang] || lang;
+            // Convert Finglish to Persian for voice selection
+            const speechLang = lang === 'finglish' ? 'fa' : lang;
+            const targetLang = langMap[speechLang] || speechLang;
             
             // Find the best natural voice for the language
             const naturalVoice = voices.find(voice => {
@@ -1263,7 +1467,7 @@ async function speakText(text, lang, rate = 1) {
                         voice.name.includes('Enhanced') ||
                         voice.localService === false); // Cloud voices are usually better
             }) || voices.find(voice => {
-                return voice.lang.toLowerCase().startsWith(lang.toLowerCase());
+                return voice.lang.toLowerCase().startsWith(speechLang.toLowerCase());
             });
             
             if (naturalVoice) {
@@ -1275,7 +1479,8 @@ async function speakText(text, lang, rate = 1) {
             }
         } else {
             // Standard voice selection for free engines
-            utterance.lang = lang === 'fa' ? 'fa-IR' : lang === 'ar' ? 'ar-SA' : lang;
+            const speechLang = lang === 'finglish' ? 'fa' : lang;
+            utterance.lang = speechLang === 'fa' ? 'fa-IR' : speechLang === 'ar' ? 'ar-SA' : speechLang;
         }
         
         speechSynthesis.speak(utterance);
@@ -1516,16 +1721,19 @@ function speakLanguageSegment(text, lang, rate = 1) {
         const utterance = new SpeechSynthesisUtterance(text);
         utterance.rate = rate;
         
+        // Convert Finglish to Persian for speech
+        const speechLang = lang === 'finglish' ? 'fa' : lang;
+        
         // Try to find a voice for the specific language
         const voices = window.speechSynthesis.getVoices();
-        const voice = voices.find(v => v.lang.startsWith(lang)) || 
-                     voices.find(v => v.lang.startsWith(lang.split('-')[0]));
+        const voice = voices.find(v => v.lang.startsWith(speechLang)) || 
+                     voices.find(v => v.lang.startsWith(speechLang.split('-')[0]));
         
         if (voice) {
             utterance.voice = voice;
             utterance.lang = voice.lang;
         } else {
-            utterance.lang = lang;
+            utterance.lang = speechLang;
         }
         
         window.speechSynthesis.speak(utterance);
@@ -1706,6 +1914,10 @@ function checkAndShowSelection() {
 
 // Get language name from code
 function getLanguageName(langCode) {
+    // Convert Finglish to Persian for AI translation prompts
+    if (langCode === 'finglish') {
+        return 'Persian (Finglish - Persian written in Latin script)';
+    }
     return languages[langCode] || langCode || 'Unknown';
 }
 
@@ -1772,54 +1984,59 @@ async function showPopup() {
     
     // Generate replace button HTML ONLY if in editable area
     const replaceButtonHTML = isInEditableArea ? `
-        <button id="replace-btn" style="background: #f3f4f6; border: 1px solid #d1d5db; padding: 4px 8px; border-radius: 4px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 4px; transition: all 0.2s ease; font-size: 11px; color: #374151;" title="Replace selected text">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="2">
+                 <button id="replace-btn" style="background: #f3f4f6; border: 1px solid #d1d5db; padding: 2px 6px; border-radius: 3px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 3px; transition: all 0.2s ease; font-size: 10px; color: #374151;" title="Replace selected text">
+             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="2" style="flex-shrink: 0;">
                 <path d="M16 3l4 4-4 4"></path>
                 <path d="M20 7H4"></path>
                 <path d="M8 21l-4-4 4-4"></path>
                 <path d="M4 17h16"></path>
             </svg>
-            <span style="font-weight: 500;">Replace</span>
+             <span style="font-weight: 500; line-height: 1; white-space: nowrap;">Replace</span>
         </button>
     ` : '';
     
-    // Update popup content
+    // Update popup content with standardized UI
     popup.innerHTML = `
         <!-- Compact Header with Language Selection and Controls -->
-        <div id="popup-header" style="background: #f5f5f5; padding: 3px 6px; border-bottom: 1px solid #d1d5db; height: 28px; display: flex; align-items: center; justify-content: space-between; cursor: move; user-select: none;">
-            <!-- Language Selectors (Left) -->
-            <div style="display: flex; gap: 4px; align-items: center; flex: 1;">
-                <select id="source-lang" style="padding: 2px 4px; border: 1px solid #d1d5db; border-radius: 3px; font-size: 10px; background: white; width: 60px; color: #374151; cursor: pointer; transition: all 0.2s ease;">
-                    ${generateLanguageOptions(prefs.source, true)}
-                </select>
-                <span style="color: #374151; font-size: 12px; margin: 0 2px; font-weight: bold;">→</span>
-                <select id="target-lang" style="padding: 2px 4px; border: 1px solid #d1d5db; border-radius: 3px; font-size: 10px; background: white; width: 60px; color: #374151; cursor: pointer; transition: all 0.2s ease;">
-                    ${generateLanguageOptions(prefs.target, false)}
-                </select>
+        <div id="popup-header" style="background: #f8f9fa; padding: 3px 6px; border-bottom: 1px solid #dee2e6; height: 28px; display: flex; align-items: center; justify-content: space-between; cursor: move; user-select: none;">
+            <!-- Target Language Only (Left) -->
+            <div style="display: flex; gap: 6px; align-items: center; flex: 1;">
+                <span style="color: #6c757d; font-size: 11px; font-weight: 500;">To:</span>
+                <div style="position: relative; display: inline-flex; align-items: center; background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 4px; padding: 3px 6px; cursor: pointer; transition: all 0.2s;" id="target-lang-container">
+                    <span id="target-lang-display" style="color: #495057; font-size: 11px; font-weight: 500; margin-right: 4px;">
+                        ${getLanguageName(prefs.target)}
+                    </span>
+                    <svg width="10" height="6" viewBox="0 0 10 6" fill="none" style="pointer-events: none;">
+                        <path d="M1 1L5 5L9 1" stroke="#6c757d" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                    <select id="target-lang" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; z-index: 1;">
+                        ${generateLanguageOptions(prefs.target, false)}
+                    </select>
+                </div>
             </div>
             
-            <!-- Engine Name & Control Icons (Right) -->
-            <div style="display: flex; gap: 6px; align-items: center;">
-                <!-- Engine Name -->
-                <div id="engine-name" style="font-size: 9px; color: #1e40af; font-weight: 500; background: #dbeafe; border: 1px solid #93c5fd; padding: 1px 4px; border-radius: 3px;">
-                    Loading...
-                </div>
-                <div id="history-btn" style="cursor: pointer; color: #6b7280; transition: all 0.2s ease; display: flex; align-items: center; justify-content: center; padding: 1px;" title="History">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <!-- Control Icons Only (Right) -->
+            <div style="display: flex; gap: 8px; align-items: center;">
+                <div id="history-btn" style="cursor: pointer; color: #6c757d; transition: all 0.2s ease; display: flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 3px;" title="History">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path>
                         <path d="M3 3v5h5"></path>
                         <path d="M12 7v5l4 2"></path>
                     </svg>
                 </div>
-                <!-- Settings button - ALWAYS works regardless of translation state -->
-                <div id="settings-btn" style="cursor: pointer; color: #6b7280; transition: all 0.2s ease; display: flex; align-items: center; justify-content: center; padding: 1px;" title="Settings">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <div id="settings-btn" style="cursor: pointer; color: #6c757d; transition: all 0.2s ease; display: flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 3px;" title="Settings">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"></path>
                         <circle cx="12" cy="12" r="3"></circle>
                     </svg>
                 </div>
-                <div id="close-btn" style="cursor: pointer; color: #6b7280; transition: all 0.2s ease; display: flex; align-items: center; justify-content: center; padding: 1px;" title="Close">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <div id="donate-btn" style="cursor: pointer; color: #dc3545; transition: all 0.2s ease; display: flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 3px;" title="Support Development">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path>
+                    </svg>
+                </div>
+                <div id="close-btn" style="cursor: pointer; color: #6c757d; transition: all 0.2s ease; display: flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 3px;" title="Close">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <line x1="18" y1="6" x2="6" y2="18"></line>
                         <line x1="6" y1="6" x2="18" y2="18"></line>
                     </svg>
@@ -1827,241 +2044,268 @@ async function showPopup() {
             </div>
         </div>
         
+        <!-- Error Message Section -->
+        <div id="main-error-section" style="display: none; margin: 4px 6px 0 6px;">
+            <div style="background: #fee; border: 1px solid #fcc; color: #c33; padding: 6px; border-radius: 4px; font-size: 11px; text-align: center;" id="main-error-message">
+                <!-- Error message will appear here -->
+            </div>
+            </div>
+            
         <!-- Content Area -->
-        <div style="padding: 6px;">
+        <div style="padding: 4px 6px;">
             <!-- Language Detection Section -->
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                <div id="detected-lang" style="font-size: 12px; color: #6b7280; flex: 1;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                <div id="detected-lang" style="font-size: 12px; color: #6c757d; flex: 1;">
                     Detecting language...
                 </div>
-                <!-- Speech and Copy Buttons -->
-                <div style="display: flex; gap: 4px;">
+                <!-- Action Buttons Row -->
+                <div style="display: flex; gap: 4px; align-items: center;">
                     <!-- Copy Original Text Button -->
-                    <button id="copy-original-btn" style="background: #f3f4f6; border: 1px solid #d1d5db; width: 24px; height: 24px; border-radius: 4px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.2s ease;" title="Copy original text">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="2">
+                    <button id="copy-original-btn" style="background: #f8f9fa !important; border: 1px solid #dee2e6 !important; width: 22px !important; height: 22px !important; border-radius: 3px !important; cursor: pointer !important; display: flex !important; align-items: center !important; justify-content: center !important; transition: all 0.2s ease !important; padding: 0 !important; margin: 0 !important; box-sizing: border-box !important;" title="Copy original text">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#6c757d" stroke-width="2" style="display: block !important; margin: 0 auto !important;">
                             <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
                             <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
                         </svg>
                     </button>
                     ${settings.textToSpeech ? `
-                        <button id="speak-normal" style="background: #f3f4f6; border: 1px solid #d1d5db; width: 24px; height: 24px; border-radius: 4px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.2s ease;" title="Normal speed">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="2">
+                        <!-- Speech Buttons -->
+                        <button id="speak-normal" style="background: #f8f9fa !important; border: 1px solid #dee2e6 !important; width: 22px !important; height: 22px !important; border-radius: 3px !important; cursor: pointer !important; display: flex !important; align-items: center !important; justify-content: center !important; transition: all 0.2s ease !important; padding: 0 !important; margin: 0 !important; box-sizing: border-box !important;" title="Normal speed">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#6c757d" stroke-width="2" style="display: block !important; margin: 0 auto !important;">
                                 <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
                                 <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path>
                             </svg>
                         </button>
-                        <button id="speak-slow" style="background: #f3f4f6; border: 1px solid #d1d5db; width: 24px; height: 24px; border-radius: 4px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.2s ease; position: relative;" title="Slow speed (${settings.slowSpeechRate || 0.25}x)">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="2">
+                        <button id="speak-slow" style="background: #f8f9fa !important; border: 1px solid #dee2e6 !important; width: 22px !important; height: 22px !important; border-radius: 3px !important; cursor: pointer !important; display: flex !important; align-items: center !important; justify-content: center !important; transition: all 0.2s ease !important; position: relative !important; padding: 0 !important; margin: 0 !important; box-sizing: border-box !important;" title="Slow speed (${settings.slowSpeechRate || 0.25}x)">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#6c757d" stroke-width="2" style="display: block !important; margin: 0 auto !important;">
                                 <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
                                 <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path>
                             </svg>
-                            <span style="position: absolute; top: -2px; right: -2px; background: #6b7280; color: white; font-size: 7px; padding: 1px 2px; border-radius: 2px; line-height: 1;">${settings.slowSpeechRate || 0.25}x</span>
+                            <span style="position: absolute !important; top: -2px !important; right: -2px !important; background: #6c757d !important; color: white !important; font-size: 7px !important; padding: 1px 2px !important; border-radius: 2px !important; line-height: 1 !important; font-weight: 500 !important;">${settings.slowSpeechRate || 0.25}x</span>
                         </button>
                     ` : ''}
                 </div>
             </div>
             
             <!-- Translation Result -->
-            <div id="translation-section" style="margin-bottom: 6px; display: none;">
-                <div id="translation-result" style="background: #f9fafb; padding: 8px; border-radius: 6px; color: #374151; font-size: ${settings.fontSize}px; max-height: 120px; overflow-y: auto; border: 1px solid #e5e7eb; line-height: 1.5; text-align: center;">
+            <div id="translation-section" style="margin-bottom: 2px; display: none;">
+                <div id="translation-result" style="background: white; padding: 6px 4px; border-radius: 4px; color: #495057; font-size: ${settings.fontSize}px; max-height: 120px; overflow-y: auto; border: 1px solid #dee2e6; line-height: 1.4; text-align: center !important; display: flex; align-items: center; justify-content: center; min-height: 40px;">
                     <!-- Translation will appear here -->
                 </div>
                 
                 <!-- Action Buttons (Below Translation, Centered) -->
-                <div style="display: flex; justify-content: center; gap: 6px; margin-top: 6px;">
+                <div style="display: flex; justify-content: center; gap: 6px; margin-top: 4px; align-items: center;">
+                    <!-- Copy Translation Button -->
+                    <button id="copy-btn" style="background: #f8f9fa !important; border: 1px solid #dee2e6 !important; width: 24px !important; height: 24px !important; border-radius: 3px !important; cursor: pointer !important; display: flex !important; align-items: center !important; justify-content: center !important; transition: all 0.2s ease !important; padding: 0 !important; margin: 0 !important; box-sizing: border-box !important;" title="Copy translation">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#6c757d" stroke-width="2" style="display: block !important; margin: 0 auto !important;">
+                            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                        </svg>
+                    </button>
                     ${replaceButtonHTML}
                 </div>
             </div>
             
             <!-- Loading State -->
-            <div id="loading-state" style="text-align: center; padding: 12px; color: #6b7280; font-size: 13px;">
-                <div style="display: inline-block; width: 16px; height: 16px; border: 2px solid #e5e7eb; border-top: 2px solid #6b7280; border-radius: 50%; animation: spin 1s linear infinite; margin-right: 8px;"></div>
+            <div id="loading-state" style="text-align: center; padding: 8px; color: #6c757d; font-size: 13px;">
+                <div style="display: inline-block; width: 18px; height: 18px; border: 2px solid #dee2e6; border-top: 2px solid #6c757d; border-radius: 50%; animation: spin 1s linear infinite; margin-right: 8px;"></div>
                 Translating...
-            </div>
-            
+        </div>
+        
             <!-- Grammar Correction Section -->
-            <div id="grammar-correction-section" style="margin-top: 6px; display: none;">
-                <div style="background: #fef3c7; padding: 6px; border-radius: 6px; border: 1px solid #f59e0b; margin-bottom: 6px;">
-                    <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 6px;">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2">
-                            <path d="M9 12l2 2 4-4"></path>
-                            <circle cx="12" cy="12" r="9"></circle>
-                        </svg>
-                        <span style="font-size: 12px; font-weight: 600; color: #92400e;">Grammar Correction:</span>
+            <div id="grammar-correction-section" style="margin-top: 4px; display: none;">
+                <div style="background: #fff3cd; padding: 8px; border-radius: 6px; border: 1px solid #ffeaa7; margin-bottom: 8px; text-align: center;">
+                    <div style="display: flex; align-items: center; justify-content: center; gap: 8px; margin-bottom: 8px;">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#dc3545" stroke-width="2">
+                            <circle cx="12" cy="12" r="10"></circle>
+                            <line x1="15" y1="9" x2="9" y2="15"></line>
+                            <line x1="9" y1="9" x2="15" y2="15"></line>
+                </svg>
+                        <span style="font-size: 11px; font-weight: 400; color: #6c757d;">Grammar Correction:</span>
                     </div>
-                    <div id="grammar-correction-text" style="font-size: ${settings.fontSize}px; line-height: 1.5; color: #92400e; margin-bottom: 8px;">
+                    <div id="grammar-correction-text" style="font-size: ${settings.fontSize}px; line-height: 1.5; color: #856404; margin-bottom: 10px; font-weight: bold; text-align: center !important; display: block; width: 100%;">
                         <!-- Corrected text will appear here -->
                     </div>
                     <div style="display: flex; justify-content: center; gap: 6px;">
-                        <button id="copy-correction-inline" style="background: #10b981; color: white; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer; font-size: 11px; font-weight: 500;" title="Copy correction">
-                            📋 Copy
-                        </button>
-                        <button id="replace-correction-inline" style="background: #3b82f6; color: white; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer; font-size: 11px; font-weight: 500; display: none;" title="Replace text">
-                            🔄 Replace
-                        </button>
+                        <button id="copy-correction-inline" style="background: #f8f9fa !important; border: 1px solid #dee2e6 !important; width: 24px !important; height: 24px !important; border-radius: 3px !important; cursor: pointer !important; display: flex !important; align-items: center !important; justify-content: center !important; transition: all 0.2s ease !important; padding: 0 !important; margin: 0 !important; box-sizing: border-box !important;" title="Copy correction">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#6c757d" stroke-width="2" style="display: block !important; margin: 0 auto !important;">
+                                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                            </svg>
+            </button>
                     </div>
+                </div>
             </div>
-        </div>
         
             <!-- Grammar Success Section -->
-            <div id="grammar-success-section" style="margin-top: 6px; display: none;">
-                <div style="background: #ecfdf5; padding: 6px; border-radius: 6px; border: 1px solid #10b981; text-align: center;">
-                    <div style="display: flex; align-items: center; justify-content: center; gap: 6px; color: #10b981; font-size: 12px; font-weight: 600;">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2">
+            <div id="grammar-success-section" style="margin-top: 4px; display: none;">
+                <div style="background: #d1e7dd; padding: 8px; border-radius: 6px; border: 1px solid #a3cfbb; text-align: center;">
+                    <div style="display: flex; align-items: center; justify-content: center; gap: 8px; color: #6c757d; font-size: 11px; font-weight: 400;">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <path d="M9 12l2 2 4-4"></path>
                             <circle cx="12" cy="12" r="9"></circle>
                         </svg>
                         Perfect Grammar!
-                    </div>
-                    <div style="color: #065f46; font-size: 11px; margin-top: 4px;">
-                        Your text is grammatically correct.
                     </div>
                 </div>
             </div>
         </div>
         
         <!-- Footer - Always show with different content based on engine -->
-        <div id="footer" style="background: #f5f5f5; padding: 3px 6px; border-top: 1px solid #d1d5db; display: flex; justify-content: space-between; align-items: center; height: 28px; gap: 6px;">
-            ${settings.translationEngine === 'free' ? `
+        <div id="footer" style="background: #f8f9fa; padding: 3px 6px; border-top: 1px solid #dee2e6; display: flex; justify-content: space-between; align-items: center; height: 26px; gap: 6px; margin-top: 1px;">
+                        ${settings.translationEngine === 'free' ? `
                 <!-- Free Engine Footer -->
-                <button id="switch-to-ai-btn" style="background: #dbeafe; border: 1px solid #93c5fd; color: #1e40af; padding: 3px 6px; border-radius: 3px; cursor: pointer; font-size: 9px; font-weight: 500;" title="Upgrade to AI translation">
-                    🤖 Try AI Translation
-                </button>
-                <div style="flex: 1;"></div>
-                <!-- Copy Button (Right) -->
-                <button id="copy-btn" style="background: #f3f4f6; border: 1px solid #d1d5db; width: 24px; height: 24px; border-radius: 4px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.2s ease;" title="Copy translation">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="2">
-                        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-                        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-                    </svg>
-                </button>
-            ` : `
+            <div style="display: flex; align-items: center; gap: 6px;">
+                    <!-- Engine Name (Left) -->
+                    <div id="engine-name" style="font-size: 9px; font-weight: 500;"><span style="color: #6c757d; font-weight: 500;">Engine:</span> <span style="color: #0d6efd; font-weight: 600;">Free</span> <span style="color: #e67e00; font-weight: 600;">(no AI)</span></div>
+                </div>
+                <div style="display: flex; gap: 6px; align-items: center;">
+                                         <button id="ai-explain-btn" style="background: #e7f1ff !important; border: none !important; padding: 2px 6px !important; border-radius: 4px !important; cursor: pointer !important; display: flex !important; align-items: center !important; gap: 3px !important; transition: all 0.2s ease !important; font-size: 10px !important; color: #0d6efd !important; font-weight: 600 !important; white-space: nowrap !important; flex-direction: row !important; justify-content: center !important; min-height: 22px !important; max-height: 22px !important; height: 22px !important; line-height: 1.2 !important; box-sizing: border-box !important;" title="AI Explain">
+                         <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink: 0 !important; display: inline-block !important; vertical-align: middle !important;">
+                             <path d="M12 2L2 7l10 5 10-5-10-5z"></path>
+                             <path d="M2 17l10 5 10-5"></path>
+                             <path d="M2 12l10 5 10-5"></path>
+                         </svg>
+                         <span style="white-space: nowrap !important; line-height: 1 !important;">AI Explain</span>
+                     </button>
+                     <button id="grammar-check-btn" style="background: #fff4e6 !important; border: none !important; padding: 2px 6px !important; border-radius: 4px !important; cursor: pointer !important; display: flex !important; align-items: center !important; gap: 3px !important; transition: all 0.2s ease !important; font-size: 10px !important; color: #e67e00 !important; font-weight: 600 !important; white-space: nowrap !important; flex-direction: row !important; justify-content: center !important; min-height: 22px !important; max-height: 22px !important; height: 22px !important; line-height: 1 !important; box-sizing: border-box !important;" title="Check Grammar">
+                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink: 0 !important; display: inline-block !important; vertical-align: middle !important;">
+                             <path d="M9 12l2 2 4-4"></path>
+                             <circle cx="12" cy="12" r="9"></circle>
+                         </svg>
+                         <span style="white-space: nowrap !important; line-height: 1 !important;">Check Grammar</span>
+                     </button>
+            </div>
+                        ` : `
                 <!-- AI Engine Footer -->
-            <button id="ai-explain-btn" style="background: #dbeafe; border: 1px solid #93c5fd; padding: 3px 6px; border-radius: 3px; cursor: pointer; display: flex; align-items: center; gap: 3px; transition: all 0.2s ease; font-size: 9px; color: #1e40af; font-weight: 500; margin-right: 4px;" title="AI Explain">
-                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M9 11H5a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7a2 2 0 0 0-2-2h-4"></path>
-                    <rect x="9" y="7" width="6" height="6"></rect>
-                </svg>
-                AI Explain
-            </button>
-            
-                <!-- Grammar Check Button (Center) -->
-                <button id="grammar-check-btn" style="background: #fef3c7; border: 1px solid #fbbf24; padding: 3px 6px; border-radius: 3px; cursor: pointer; display: flex; align-items: center; gap: 3px; transition: all 0.2s ease; font-size: 9px; color: #d97706; font-weight: 500;" title="Check Grammar">
-                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M9 12l2 2 4-4"></path>
-                        <circle cx="12" cy="12" r="9"></circle>
-                    </svg>
-                    Grammar
-                </button>
-                
-                <div style="flex: 1;"></div>
-                
-                <!-- Copy Button (Right) -->
-                <button id="copy-btn" style="background: #f3f4f6; border: 1px solid #d1d5db; width: 24px; height: 24px; border-radius: 4px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.2s ease;" title="Copy translation">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="2">
-                        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-                        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-                    </svg>
-                </button>
+                <div style="display: flex; align-items: center; gap: 6px;">
+                    <!-- Engine Name (Left) -->
+                    <div id="engine-name" style="font-size: 9px; font-weight: 500;"><span style="color: #6c757d; font-weight: 500;">Engine:</span> <span style="color: #0d6efd; font-weight: 600;">Loading...</span></div>
+                </div>
+                <div style="display: flex; gap: 6px; align-items: center;">
+                    <button id="ai-explain-btn" style="background: #e7f1ff !important; border: none !important; padding: 2px 6px !important; border-radius: 4px !important; cursor: pointer !important; display: flex !important; align-items: center !important; gap: 3px !important; transition: all 0.2s ease !important; font-size: 10px !important; color: #0d6efd !important; font-weight: 600 !important; white-space: nowrap !important; flex-direction: row !important; justify-content: center !important; min-height: 22px !important; max-height: 22px !important; height: 22px !important; line-height: 1.2 !important; box-sizing: border-box !important;" title="AI Explain">
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink: 0 !important; display: inline-block !important; vertical-align: middle !important;">
+                            <path d="M12 2L2 7l10 5 10-5-10-5z"></path>
+                            <path d="M2 17l10 5 10-5"></path>
+                            <path d="M2 12l10 5 10-5"></path>
+                        </svg>
+                        <span style="display: inline-block !important; white-space: nowrap !important; line-height: 1.2 !important; vertical-align: middle !important;">AI Explain</span>
+                    </button>
+                    
+                    <!-- Grammar Check Button -->
+                    <button id="grammar-check-btn" style="background: #fff4e6 !important; border: none !important; padding: 2px 6px !important; border-radius: 4px !important; cursor: pointer !important; display: flex !important; align-items: center !important; gap: 3px !important; transition: all 0.2s ease !important; font-size: 10px !important; color: #e67e00 !important; font-weight: 600 !important; white-space: nowrap !important; flex-direction: row !important; justify-content: center !important; min-height: 22px !important; max-height: 22px !important; height: 22px !important; line-height: 1 !important; box-sizing: border-box !important;" title="Check Grammar">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink: 0 !important; display: inline-block !important;">
+                            <path d="M9 12l2 2 4-4"></path>
+                            <circle cx="12" cy="12" r="9"></circle>
+                        </svg>
+                        <span style="display: inline-block !important; white-space: nowrap !important; line-height: 1 !important;">Check Grammar</span>
+                    </button>
+                </div>
             `}
         </div>
         
         <style>
+            /* FORCE LTR for all popup elements */
+            #selection-popup * {
+                direction: ltr !important;
+                text-align: left !important;
+                unicode-bidi: normal !important;
+            }
+            
+            /* RTL ONLY for translated text content */
+            #selection-popup .rtl-text {
+                direction: rtl !important;
+                text-align: right !important;
+                unicode-bidi: embed !important;
+            }
+            
             @keyframes spin {
                 0% { transform: rotate(0deg); }
                 100% { transform: rotate(360deg); }
             }
             
-            /* Hover effects */
+            @keyframes heartbeat {
+                0%, 50%, 100% { transform: scale(1); }
+                25%, 75% { transform: scale(1.1); }
+            }
+            
+            /* Consistent Hover Effects */
             #close-btn:hover, #settings-btn:hover, #history-btn:hover {
-                color: #374151 !important;
+                background: #e9ecef !important;
+                color: #495057 !important;
+            }
+            
+            #donate-btn {
+                animation: heartbeat 2s ease-in-out infinite;
+            }
+            
+            #donate-btn:hover {
+                background: #f8d7da !important;
+                color: #c82333 !important;
+            }
+            
+            #target-lang-container:hover {
+                background: #e9ecef !important;
+                border-color: #adb5bd !important;
+                transform: translateY(-1px);
+                box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            }
+            
+            #target-lang-container:active {
+                transform: translateY(0px);
+                box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+            }
+            
+            #target-lang {
+                border: none !important;
+                outline: none !important;
+            }
+            
+            #speak-normal:hover, #speak-slow:hover, #copy-original-btn:hover, #copy-btn:hover {
+                background: #e9ecef !important;
+                border-color: #adb5bd !important;
                 transform: scale(1.1) !important;
             }
             
-            #source-lang:hover, #target-lang:hover {
-                border-color: #9ca3af !important;
-                box-shadow: 0 0 0 1px #9ca3af !important;
-            }
-            
-            #speak-normal:hover, #speak-slow:hover, #copy-original-btn:hover {
-                background: #e5e7eb !important;
-                border-color: #9ca3af !important;
-                transform: scale(1.05) !important;
-            }
-            
-            #copy-btn:hover, #replace-btn:hover {
-                background: #e5e7eb !important;
-                border-color: #9ca3af !important;
-                transform: scale(1.05) !important;
+            #replace-btn:hover {
+                background: #e9ecef !important;
+                border-color: #adb5bd !important;
+                transform: scale(1.02) !important;
             }
             
             #ai-explain-btn:hover {
-                background: #bbdefb !important;
-                border-color: #90caf9 !important;
-                transform: scale(1.05) !important;
+                background: #cfe2ff !important;
+                border-color: #86b7fe !important;
+                transform: scale(1.02) !important;
             }
             
-            /* Grammar Check Button Styles */
             #grammar-check-btn:hover {
-                background: #d97706 !important;
-                border-color: #92400e !important;
-                transform: scale(1.05) !important;
+                background: #ffeaa7 !important;
+                border-color: #ffda6a !important;
+                transform: scale(1.02) !important;
+            }
+            
+            #switch-to-ai-btn:hover {
+                background: #cfe2ff !important;
+                border-color: #86b7fe !important;
+                transform: scale(1.02) !important;
             }
             
             #grammar-check-btn:disabled {
-                background: #9ca3af !important;
-                border-color: #6b7280 !important;
+                background: #e9ecef !important;
+                border-color: #adb5bd !important;
+                color: #6c757d !important;
                 cursor: not-allowed !important;
                 transform: none !important;
             }
             
             /* Inline correction buttons */
             #copy-correction-inline:hover {
-                background: #059669 !important;
+                background: #146c43 !important;
                 transform: scale(1.05) !important;
             }
             
             #replace-correction-inline:hover {
-                background: #2563eb !important;
-                transform: scale(1.05) !important;
-            }
-            
-
-            
-            .lang-item {
-                display: flex;
-                justify-content: space-between;
-                align-items: center;
-                margin-bottom: 3px;
-                padding: 2px 0;
-            }
-            
-            .lang-name {
-                font-weight: 500;
-                color: #374151;
-                font-size: 11px;
-            }
-            
-            .lang-buttons {
-                display: flex;
-                gap: 1px;
-            }
-            
-            .lang-speak-btn, .lang-copy-btn {
-                background: #f3f4f6;
-                border: 1px solid #d1d5db;
-                width: 20px;
-                height: 20px;
-                border-radius: 2px;
-                cursor: pointer;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                transition: all 0.2s ease;
-            }
-            
-            .lang-speak-btn:hover, .lang-copy-btn:hover {
-                background: #e5e7eb !important;
+                background: #0b5ed7 !important;
                 transform: scale(1.05) !important;
             }
             
@@ -2119,7 +2363,21 @@ async function detectSingleLanguage(text) {
         
         // Extract detected language from response
         if (data && data[2]) {
-            return data[2];
+            let detectedLang = data[2];
+            
+            // Check for Finglish (Persian written in Latin script) - async check
+            if (detectedLang === 'en') {
+                try {
+                    const isFinglish = await isFinglishTextAdvanced(text);
+                    if (isFinglish) {
+                        detectedLang = 'finglish';
+                    }
+                } catch (error) {
+                    console.error('Finglish detection error:', error);
+                }
+            }
+            
+            return detectedLang;
         }
         
         return 'auto';
@@ -2138,6 +2396,9 @@ async function performTranslation() {
         isTranslating = false;
         return;
     }
+    
+    // Hide any previous error messages
+    hideMainError();
     
     isTranslating = true;
     const loadingState = popup.querySelector('#loading-state');
@@ -2219,7 +2480,7 @@ async function performTranslation() {
             const fontSize = settings.fontSize || 12;
                 
                 translationResult.innerHTML = `
-                <div class="${rtlClass}" style="text-align: center; font-size: ${fontSize}px;">${translatedText}</div>
+                <div class="${rtlClass}" style="font-size: ${fontSize}px; padding: 8px;">${translatedText}</div>
                 `;
             }
             
@@ -2267,11 +2528,11 @@ async function performTranslation() {
                         ${actualError}
                     </div>
                     <div style="text-align: center;">
-                        <button id="retry-translation" style="background: #3b82f6; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 500; margin-right: 8px;" title="Retry with current engine">
-                            🔁 Retry ${currentEngine.toUpperCase()}
+                        <button id="retry-translation" style="background: #3b82f6; color: white; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer; font-size: 11px; font-weight: 500; margin-right: 8px;" title="Retry with current engine">
+                            🔁 Retry
                         </button>
-                        <button id="switch-to-free" style="background: #22c55e; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 500;" title="Switch to free Google Translate">
-                            🆓 Try Free Engine
+                        <button id="switch-to-free" style="background: #22c55e; color: white; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer; font-size: 11px; font-weight: 500;" title="Switch to free Google Translate">
+                            🆓 Free
                         </button>
                     </div>
                 `;
@@ -2294,8 +2555,8 @@ async function performTranslation() {
                                 const isTargetRTL = isRTLLanguage(prefs.target);
                                 const rtlClass = isTargetRTL ? 'rtl-text' : '';
                                 translationResult.innerHTML = `
-                                    <div class="${rtlClass}" style="text-align: center; font-size: ${fontSize}px;">${freeTranslation}</div>
-                                    <div style="text-align: center; margin-top: 8px; padding: 6px; background: #ecfdf5; border-radius: 4px; font-size: 11px; color: #059669;">
+                                    <div class="${rtlClass}" style="font-size: ${fontSize}px; padding: 8px;">${freeTranslation}</div>
+                                    <div style="text-align: center; margin-top: 8px; padding: 6px; background: #ecfdf5; border-radius: 4px; font-size: 11px; color: #059669; direction: ltr !important;">
                                         ✅ Translated with Free Engine (Google Translate)
                                     </div>
                                 `;
@@ -2338,8 +2599,8 @@ async function performTranslation() {
                         ${error.message || 'Network or service issue'}
                     </div>
                     <div style="text-align: center;">
-                        <button id="retry-translation" style="background: #3b82f6; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 500;" title="Retry translation">
-                            🔁 Retry Free Translation
+                        <button id="retry-translation" style="background: #3b82f6; color: white; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer; font-size: 11px; font-weight: 500;" title="Retry translation">
+                            🔁 Retry
                         </button>
                     </div>
                 `;
@@ -2404,8 +2665,8 @@ async function switchToFreeMode() {
                     const fontSize = currentSettings ? currentSettings.fontSize : 14;
                     
                     translationResult.innerHTML = `
-                        <div class="${rtlClass}" style="text-align: center; font-size: ${fontSize}px;">${translatedText}</div>
-                        <div style="text-align: center; margin-top: 8px; padding: 6px; background: #fef3c7; border-radius: 4px; font-size: 11px; color: #d97706;">
+                        <div class="${rtlClass}" style="font-size: ${fontSize}px; padding: 8px;">${translatedText}</div>
+                        <div style="text-align: center; margin-top: 8px; padding: 6px; background: #fef3c7; border-radius: 4px; font-size: 11px; color: #d97706; direction: ltr !important;">
                             ⚡ Auto-switched to Free Mode due to timeout
                         </div>
                     `;
@@ -2540,7 +2801,7 @@ async function switchBackToAI() {
         
     } catch (error) {
         console.error('Error switching back to AI:', error);
-        alert('Failed to switch back to AI engine. Please check settings.');
+                    showMainError('Failed to switch back to AI engine. Please check settings.');
     }
 }
 
@@ -2570,19 +2831,23 @@ function setupTranslationButtons() {
 function setupLanguageSelectorListeners() {
     if (!popup || !isExtensionContextValid()) return;
     
-    const sourceLang = popup.querySelector('#source-lang');
     const targetLang = popup.querySelector('#target-lang');
-    
-    if (sourceLang) {
-        // Remove existing listeners to prevent duplicates
-        sourceLang.removeEventListener('change', handleSourceLanguageChange);
-        sourceLang.addEventListener('change', handleSourceLanguageChange);
-    }
     
     if (targetLang) {
         // Remove existing listeners to prevent duplicates
         targetLang.removeEventListener('change', handleTargetLanguageChange);
-        targetLang.addEventListener('change', handleTargetLanguageChange);
+        targetLang.addEventListener('change', function(event) {
+            // Update the display text
+            const display = popup.querySelector('#target-lang-display');
+            if (display) {
+                display.textContent = getLanguageName(event.target.value);
+            }
+            // Call the original handler
+            handleTargetLanguageChange(event);
+        });
+        console.log('🔗 Target language listener setup complete for dropdown with', targetLang.options.length, 'options');
+    } else {
+        console.log('❌ Target language dropdown not found');
     }
 }
 
@@ -2625,19 +2890,15 @@ async function handleTargetLanguageChange(event) {
     }
     
     const targetLang = event.target;
-    const sourceLang = popup.querySelector('#source-lang');
-    
-    if (!sourceLang) {
-        console.log('❌ Source lang not found in handleTargetLanguageChange');
-        return;
-    }
     
     try {
-        console.log('💾 Saving language preferences:', sourceLang.value, '->', targetLang.value);
-        await saveLanguagePreferences(sourceLang.value, targetLang.value);
-        console.log('🔄 Starting translation after language change');
+        // Get current preferences to maintain source language
+        const prefs = await getLanguagePreferences();
+        console.log('💾 Saving language preferences:', prefs.source, '->', targetLang.value);
+        await saveLanguagePreferences(prefs.source, targetLang.value);
+        console.log('🔄 Starting translation after target language change');
         await performTranslation();
-        console.log('✅ Translation completed after language change');
+        console.log('✅ Translation completed after target language change');
     } catch (error) {
         console.error('Error updating target language:', error);
     }
@@ -2742,6 +3003,99 @@ function handleReplaceClick() {
     }
 }
 
+// Simple, quiet settings opener - no error popups, always works
+async function openSettingsQuietly() {
+    console.log('🔧 Opening settings quietly...');
+    
+    // Hide popup immediately to prevent interference
+    if (popup && popup.style.display !== 'none') {
+        hidePopup();
+    }
+    
+    // Stop any ongoing translation to prevent context issues
+    if (isTranslating) {
+        isTranslating = false;
+        if (translationTimeout) {
+            clearTimeout(translationTimeout);
+            translationTimeout = null;
+        }
+    }
+    
+    // Try methods in order, but don't show any errors to user
+    const methods = [
+        // Method 1: Background script
+        async () => {
+            if (chrome.runtime && chrome.runtime.sendMessage) {
+                const response = await chrome.runtime.sendMessage({ action: 'openOptions' });
+                return response && response.success;
+            }
+            return false;
+        },
+        
+        // Method 2: Direct API
+        async () => {
+            if (chrome.runtime && chrome.runtime.openOptionsPage) {
+                await chrome.runtime.openOptionsPage();
+                return true;
+            }
+            return false;
+        },
+        
+        // Method 3: Create tab
+        async () => {
+            if (chrome.tabs && chrome.tabs.create) {
+                const optionsUrl = chrome.runtime.getURL('options.html');
+                await chrome.tabs.create({ url: optionsUrl, active: true });
+                return true;
+            }
+            return false;
+        },
+        
+        // Method 4: Window open with extension ID
+        async () => {
+            let extensionId = chrome.runtime?.id;
+            if (!extensionId) {
+                // Try to extract from script tags
+                const scripts = document.querySelectorAll('script[src*="chrome-extension://"]');
+                for (const script of scripts) {
+                    const match = script.src.match(/chrome-extension:\/\/([a-z]+)\//);
+                    if (match) {
+                        extensionId = match[1];
+                        break;
+                    }
+                }
+            }
+            
+            if (extensionId) {
+                const optionsUrl = `chrome-extension://${extensionId}/options.html`;
+                const win = window.open(optionsUrl, '_blank');
+                if (win) {
+                    win.focus();
+                    return true;
+                }
+            }
+            return false;
+        }
+    ];
+    
+    // Try each method until one works
+    for (const method of methods) {
+        try {
+            const success = await method();
+            if (success) {
+                console.log('✅ Settings opened successfully');
+                return;
+            }
+        } catch (error) {
+            // Silently continue to next method
+            console.log('Method failed, trying next:', error.message);
+        }
+    }
+    
+    // All methods failed - still be silent about it
+    console.log('❌ All methods failed - options could not be opened');
+}
+
 // Open options page with multiple fallback methods
 async function openOptionsPageWithFallback() {
     console.log('🔧 Attempting to open options page...');
@@ -2749,140 +3103,182 @@ async function openOptionsPageWithFallback() {
     console.log('🔧 Chrome runtime available:', !!chrome.runtime);
     console.log('🔧 OpenOptionsPage available:', !!chrome.runtime?.openOptionsPage);
     
+    // Hide popup immediately to prevent interference
+    if (popup && popup.style.display !== 'none') {
+        hidePopup();
+    }
+    
+    // Stop any ongoing translation to prevent context issues
+    if (isTranslating) {
+        isTranslating = false;
+        if (translationTimeout) {
+            clearTimeout(translationTimeout);
+            translationTimeout = null;
+        }
+    }
+    
     // Method 1: Direct chrome.runtime.openOptionsPage
     try {
-        if (chrome.runtime && chrome.runtime.openOptionsPage) {
+        if (chrome.runtime && chrome.runtime.openOptionsPage && isExtensionContextValid()) {
             console.log('🔧 Trying Method 1: chrome.runtime.openOptionsPage');
             await chrome.runtime.openOptionsPage();
             console.log('✅ Method 1 succeeded');
             return;
     } else {
-            console.log('❌ Method 1 not available: openOptionsPage not found');
+            console.log('❌ Method 1 not available: openOptionsPage not found or context invalid');
         }
     } catch (error) {
         console.log('❌ Method 1 (openOptionsPage) failed:', error);
     }
     
-    // Method 2: chrome.runtime.sendMessage
+    // Method 2: Manifest-based URL with manual construction
     try {
-        console.log('🔧 Trying Method 2: chrome.runtime.sendMessage');
-        const response = await chrome.runtime.sendMessage({ action: 'openOptions' });
-        if (response && response.success) {
-            console.log('✅ Method 2 succeeded');
-            return;
+        console.log('🔧 Trying Method 2: Manual URL construction');
+        
+        // Get extension ID from chrome.runtime.id if available
+        let extensionId = '';
+        try {
+            extensionId = chrome.runtime.id;
+        } catch (e) {
+            // Fallback: try to extract from current script URL
+            const scripts = document.querySelectorAll('script');
+            for (const script of scripts) {
+                if (script.src && script.src.includes('chrome-extension://')) {
+                    const match = script.src.match(/chrome-extension:\/\/([a-z]+)\//);
+                    if (match) {
+                        extensionId = match[1];
+                        break;
+                    }
+                }
+            }
         }
-        console.log('❌ Method 2 failed: Invalid response', response);
+        
+        if (extensionId) {
+            const optionsUrl = `chrome-extension://${extensionId}/options.html`;
+            console.log('🔧 Constructed options URL:', optionsUrl);
+            
+            // Try window.open with specific parameters to avoid blocking
+            const optionsWindow = window.open(
+                optionsUrl, 
+                'ai_translator_options', 
+                'width=800,height=700,scrollbars=yes,resizable=yes,menubar=no,toolbar=no,location=no,status=no'
+            );
+            
+            if (optionsWindow) {
+                // Small delay to ensure window opens
+                setTimeout(() => {
+                    optionsWindow.focus();
+                }, 100);
+                console.log('✅ Method 2 succeeded');
+                return;
+            }
+        }
+        
+        console.log('❌ Method 2 failed: Could not construct or open URL');
     } catch (error) {
-        console.log('❌ Method 2 (sendMessage) failed:', error);
+        console.log('❌ Method 2 (manual URL) failed:', error);
     }
     
-    // Method 3: chrome.tabs.create
+    // Method 3: chrome.tabs.create with context validation
     try {
-        console.log('🔧 Trying Method 3: chrome.tabs.create');
-        const optionsUrl = chrome.runtime.getURL('options.html');
-        await chrome.tabs.create({ url: optionsUrl });
-        console.log('✅ Method 3 succeeded');
-        return;
+        if (isExtensionContextValid() && chrome.tabs && chrome.tabs.create) {
+            console.log('🔧 Trying Method 3: chrome.tabs.create');
+            const optionsUrl = chrome.runtime.getURL('options.html');
+            await chrome.tabs.create({ url: optionsUrl, active: true });
+            console.log('✅ Method 3 succeeded');
+            return;
+        }
     } catch (error) {
         console.log('❌ Method 3 (tabs.create) failed:', error);
     }
     
-    // Method 4: window.open fallback
+    // Method 4: chrome.runtime.sendMessage to background
     try {
-        console.log('🔧 Trying Method 4: window.open');
-        let optionsUrl;
-        
-        if (chrome.runtime && chrome.runtime.getURL) {
-            optionsUrl = chrome.runtime.getURL('options.html');
-        } else {
-            // Fallback URL construction
-            optionsUrl = 'chrome-extension://' + chrome.runtime.id + '/options.html';
-        }
-        
-        console.log('🔧 Options URL:', optionsUrl);
-        const optionsWindow = window.open(optionsUrl, 'options', 'width=700,height=600,scrollbars=yes,resizable=yes');
-        
-        if (optionsWindow) {
-            console.log('✅ Method 4 succeeded');
-            // Focus the new window
-            optionsWindow.focus();
-            return;
-        } else {
-            console.log('❌ Method 4 failed: Could not open window (popup blocked?)');
+        if (isExtensionContextValid() && chrome.runtime && chrome.runtime.sendMessage) {
+            console.log('🔧 Trying Method 4: chrome.runtime.sendMessage');
+            const response = await chrome.runtime.sendMessage({ 
+                action: 'openOptions',
+                timestamp: Date.now() 
+            });
+            if (response && response.success) {
+                console.log('✅ Method 4 succeeded');
+                return;
+            }
+            console.log('❌ Method 4 failed: Invalid response', response);
         }
     } catch (error) {
-        console.log('❌ Method 4 (window.open) failed:', error);
+        console.log('❌ Method 4 (sendMessage) failed:', error);
     }
     
-    // Method 5: LocalStorage + Page Reload Strategy
+    // Method 5: User instruction with copy-paste URL
     try {
-        console.log('🔧 Trying Method 5: LocalStorage + Page Reload');
+        console.log('🔧 Trying Method 5: User instruction with URL');
         
-        // Set flag to open options after page reload
-        localStorage.setItem('888-ai-open-options', 'true');
-        localStorage.setItem('888-ai-options-timestamp', Date.now().toString());
-        
-        // Show user notification
-        if (popup) {
-            const notification = document.createElement('div');
-            notification.style.cssText = `
-                position: absolute;
-                top: 10px;
-                left: 50%;
-                transform: translateX(-50%);
-                background: #3b82f6;
-                color: white;
-                padding: 8px 12px;
-                border-radius: 6px;
-                font-size: 12px;
-                z-index: 1000;
-            `;
-            notification.textContent = 'Reloading page to open settings...';
-            popup.appendChild(notification);
-            
-            setTimeout(() => {
-                window.location.reload();
-            }, 1500);
-        } else {
-            window.location.reload();
+        let extensionId = '';
+        try {
+            extensionId = chrome.runtime.id;
+        } catch (e) {
+            // Try to extract from any extension URLs on the page
+            const allElements = document.querySelectorAll('*');
+            for (const el of allElements) {
+                const style = window.getComputedStyle(el);
+                if (style.backgroundImage && style.backgroundImage.includes('chrome-extension://')) {
+                    const match = style.backgroundImage.match(/chrome-extension:\/\/([a-z]+)\//);
+                    if (match) {
+                        extensionId = match[1];
+                        break;
+                    }
+                }
+            }
         }
         
-        console.log('✅ Method 5 initiated page reload');
-        return;
-    } catch (error) {
-        console.log('❌ Method 5 (localStorage + reload) failed:', error);
-    }
-    
-    // Method 6: Force context refresh and retry
-    try {
-        console.log('🔧 Trying Method 6: Force context refresh');
-        // Force reload the current settings to ensure context is valid
-        currentSettings = null;
-        await getExtensionSettings();
+        const optionsUrl = extensionId ? 
+            `chrome-extension://${extensionId}/options.html` : 
+            'chrome://extensions/ (find 888 AI Popup Translator and click Options)';
         
-        // Try method 1 again after context refresh
-        if (chrome.runtime && chrome.runtime.openOptionsPage) {
-            await chrome.runtime.openOptionsPage();
-            console.log('✅ Method 6 succeeded');
-            return;
-        }
-    } catch (error) {
-        console.log('❌ Method 6 (context refresh) failed:', error);
-    }
-    
-    // All methods failed
-    console.log('❌ All 6 methods failed to open options page');
-    
-    // Show a more helpful error message
-    const errorMsg = `Unable to open settings automatically. Please try one of these alternatives:
-    
-1. Click the extension icon (888) in the toolbar and click Settings
-2. Go to chrome://extensions/, find "888 AI Popup Translator", and click "Options"
-3. Right-click the extension icon and select "Options"
+        // Create a user-friendly dialog
+        const userMessage = `Settings cannot be opened automatically due to browser security restrictions.
+        
+Please try one of these methods:
 
-If none work, try reloading the page and the extension.`;
+🔹 Copy this URL to your address bar:
+${optionsUrl}
+
+🔹 Or right-click the 888 extension icon in your toolbar and select "Options"
+
+🔹 Or go to chrome://extensions/, find "888 AI Popup Translator", and click "Options"
+
+Would you like to copy the settings URL to your clipboard?`;
+
+        const shouldCopy = confirm(userMessage);
+        
+        if (shouldCopy && navigator.clipboard) {
+            try {
+                await navigator.clipboard.writeText(optionsUrl);
+                showMainError('✅ Settings URL copied to clipboard! Paste it in your address bar.');
+            } catch (e) {
+                // Fallback for clipboard access issues
+                const textArea = document.createElement('textarea');
+                textArea.value = optionsUrl;
+                document.body.appendChild(textArea);
+                textArea.select();
+                document.execCommand('copy');
+                document.body.removeChild(textArea);
+                showMainError('✅ Settings URL copied to clipboard! Paste it in your address bar.');
+            }
+        }
+        
+        console.log('✅ Method 5 completed (user instruction)');
+        return;
+        
+    } catch (error) {
+        console.log('❌ Method 5 (user instruction) failed:', error);
+    }
     
-    alert(errorMsg);
+    // Final fallback: Simple instruction
+    showMainError('Unable to open settings automatically. Please right-click the 888 extension icon in your browser toolbar and select "Options".');
+    
+    console.log('❌ All methods completed - user notified');
 }
 
 // Setup header buttons that should always work (even during translation)
@@ -2913,7 +3309,7 @@ function setupHeaderButtons() {
             const originalOpacity = settingsBtn.style.opacity || '1';
             settingsBtn.style.opacity = '0.7';
             
-            openOptionsPageWithFallback().finally(() => {
+            openSettingsQuietly().finally(() => {
                 // Restore opacity quickly
                 setTimeout(() => {
                     if (settingsBtn) {
@@ -2921,6 +3317,17 @@ function setupHeaderButtons() {
                     }
                 }, 200);
             });
+        });
+    }
+    
+    // Donate button - show donation addresses
+    const donateBtn = popup.querySelector('#donate-btn');
+    if (donateBtn && !donateBtn.hasAttribute('data-listener-added')) {
+        donateBtn.setAttribute('data-listener-added', 'true');
+        donateBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            showDonationDialog();
         });
     }
     
@@ -2937,6 +3344,30 @@ function setupHeaderButtons() {
 // Setup event listeners for popup
 async function setupEventListeners() {
     if (!popup) return;
+    
+    // Universal click handler for dynamically created buttons
+    popup.addEventListener('click', async (e) => {
+        const target = e.target.closest('button');
+        if (!target) return;
+        
+        // Handle grammar check button clicks
+        if (target.id === 'grammar-check-btn') {
+            e.preventDefault();
+            e.stopPropagation();
+            console.log('🔧 Grammar check button clicked (universal handler)');
+            await performGrammarCheck();
+            return;
+        }
+        
+        // Handle AI explain button clicks
+        if (target.id === 'ai-explain-btn') {
+            e.preventDefault();
+            e.stopPropagation();
+            console.log('🔧 AI explain button clicked (universal handler)');
+            await showAIExplanation();
+            return;
+        }
+    });
     
     // Setup translation buttons
     setupTranslationButtons();
@@ -2987,20 +3418,47 @@ async function setupEventListeners() {
         });
     }
     
-    // Grammar check button
-    const grammarCheckBtn = popup.querySelector('#grammar-check-btn');
-    if (grammarCheckBtn) {
-        grammarCheckBtn.addEventListener('click', async () => {
+    // Grammar check button (with retry mechanism since it might not be in DOM initially)
+    if (popup) {
+        const grammarCheckBtn = popup.querySelector('#grammar-check-btn');
+        console.log('🔧 Looking for grammar check button:', !!grammarCheckBtn);
+        if (grammarCheckBtn && !grammarCheckBtn.hasAttribute('data-listener-added')) {
+        console.log('🔧 Setting up grammar check button listener');
+        grammarCheckBtn.setAttribute('data-listener-added', 'true');
+        grammarCheckBtn.addEventListener('click', async (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            console.log('🔧 Grammar check button clicked');
             await performGrammarCheck();
         });
+    } else if (!grammarCheckBtn) {
+        // Button might not be in DOM yet, set up a delayed retry
+        setTimeout(() => {
+            const delayedGrammarBtn = popup.querySelector('#grammar-check-btn');
+            if (delayedGrammarBtn && !delayedGrammarBtn.hasAttribute('data-listener-added')) {
+                console.log('🔧 Setting up delayed grammar check button listener');
+                delayedGrammarBtn.setAttribute('data-listener-added', 'true');
+                delayedGrammarBtn.addEventListener('click', async (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    console.log('🔧 Grammar check button clicked (delayed setup)');
+                    await performGrammarCheck();
+                });
+            }
+        }, 500);
     }
+}
     
     // AI Explain button
-    const aiExplainBtn = popup.querySelector('#ai-explain-btn');
-    if (aiExplainBtn) {
-        aiExplainBtn.addEventListener('click', async () => {
-            await showAIExplanation();
-        });
+    if (popup) {
+        const aiExplainBtn = popup.querySelector('#ai-explain-btn');
+        if (aiExplainBtn && !aiExplainBtn.hasAttribute('data-listener-added')) {
+        aiExplainBtn.setAttribute('data-listener-added', 'true');
+            aiExplainBtn.addEventListener('click', async () => {
+                console.log('🔧 AI Explain button clicked');
+                await showAIExplanation();
+            });
+        }
     }
     
     // Switch to AI button (for free engine footer)
@@ -3017,7 +3475,7 @@ async function setupEventListeners() {
                     chrome.tabs.create({ url: chrome.runtime.getURL('options.html') });
                 } catch (fallbackError) {
                     console.error('Fallback failed:', fallbackError);
-                    alert('Please click the extension icon and select Settings to configure AI engines.');
+                    showMainError('Please click the extension icon and select Settings to configure AI engines.');
                 }
             }
         });
@@ -3103,54 +3561,70 @@ async function showAIExplanation() {
     // Check if AI engine is selected
     const currentEngine = settings.translationEngine || 'free';
     if (currentEngine === 'free' || currentEngine === 'google') {
-        alert('AI Explanation requires an AI engine. Please select Gemini, OpenAI, or Anthropic in extension settings.');
+        showMainError('To use AI features, go to settings and select an AI engine to activate them');
         return;
     }
     
     // Check if AI services are available
     if (!settings.geminiApiKey && !settings.openaiApiKey && !settings.anthropicApiKey) {
-        alert('AI Explain requires a Gemini, OpenAI, or Anthropic API key. Please configure it in the extension options.');
+        showMainError('AI Explain requires a Gemini, OpenAI, or Anthropic API key. Please configure it in the extension options.');
         return;
     }
     
     if (!currentSelectedText || !translatedText) {
-        alert('Please select and translate text first.');
+        showMainError('Please select and translate text first.');
         return;
     }
     
+    // Store the text locally to prevent it from being cleared during async operations
+    const textToAnalyze = currentSelectedText;
+    const sourceLanguage = detectedLanguage;
+    
+    console.log('🔤 AI Explain - Text to analyze:', textToAnalyze);
+    console.log('🔤 AI Explain - Source language:', sourceLanguage);
+    
+    // Show explanation dialog immediately with generating state
+    showExplanationDialog("generating");
+    
     try {
-        // Show loading state
-        const aiExplainBtn = popup.querySelector('#ai-explain-btn');
-        if (aiExplainBtn) {
+        // Show loading state on button
+        if (popup) {
+            const aiExplainBtn = popup.querySelector('#ai-explain-btn');
+            if (aiExplainBtn) {
             aiExplainBtn.style.opacity = '0.5';
             aiExplainBtn.style.pointerEvents = 'none';
             aiExplainBtn.innerHTML = `
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation: spin 1s linear infinite;">
                     <path d="M21 12c0 4.97-4.03 9-9 9s-9-4.03-9-9 4.03-9 9-9c.83 0 1.64.11 2.4.31"></path>
                 </svg>
-                Loading...
+                <span>Thinking...</span>
             `;
+            }
         }
+        
+        // Small delay to ensure UI updates are visible before heavy processing
+        await new Promise(resolve => setTimeout(resolve, 200));
         
         let explanation;
         if (settings.geminiApiKey) {
-            explanation = await getAIExplanationGemini(currentSelectedText, translatedText, detectedLanguage, settings);
+            explanation = await getAIExplanationGemini(textToAnalyze, translatedText, sourceLanguage, settings);
         } else if (settings.openaiApiKey) {
-            explanation = await getAIExplanationOpenAI(currentSelectedText, translatedText, detectedLanguage, settings);
+            explanation = await getAIExplanationOpenAI(textToAnalyze, translatedText, sourceLanguage, settings);
         } else if (settings.anthropicApiKey) {
-            explanation = await getAIExplanationAnthropic(currentSelectedText, translatedText, detectedLanguage, settings);
+            explanation = await getAIExplanationAnthropic(textToAnalyze, translatedText, sourceLanguage, settings);
         }
         
-        // Show explanation in a dialog
-        showExplanationDialog(explanation);
+        // Update the dialog with the final explanation
+        updateExplanationDialog(explanation);
         
     } catch (error) {
         console.error('AI Explanation error:', error);
-        alert('Failed to get AI explanation. Please try again.');
+                    showMainError('Failed to get AI explanation. Please try again.');
     } finally {
         // Reset button state
-        const aiExplainBtn = popup.querySelector('#ai-explain-btn');
-        if (aiExplainBtn) {
+        if (popup) {
+            const aiExplainBtn = popup.querySelector('#ai-explain-btn');
+            if (aiExplainBtn) {
             aiExplainBtn.style.opacity = '1';
             aiExplainBtn.style.pointerEvents = 'auto';
             aiExplainBtn.innerHTML = `
@@ -3160,6 +3634,7 @@ async function showAIExplanation() {
                 </svg>
                 AI Explain
             `;
+            }
         }
     }
 }
@@ -3171,18 +3646,18 @@ async function performGrammarCheck() {
     // Check if AI engine is selected
     const currentEngine = settings.translationEngine || 'free';
     if (currentEngine === 'free' || currentEngine === 'google') {
-        alert('Grammar check requires an AI engine. Please select Gemini, OpenAI, or Anthropic in extension settings.');
+        showMainError('To use AI features, go to settings and select an AI engine to activate them');
         return;
     }
     
     // Check if AI services are available (Google Translate doesn't support grammar check)
     if (!settings.geminiApiKey && !settings.openaiApiKey && !settings.anthropicApiKey) {
-        alert('Grammar check requires an AI service (Gemini, OpenAI, or Anthropic). Please configure an API key in the extension options.\n\nNote: Google Translate does not support grammar checking.');
+        showMainError('Grammar check requires an AI service (Gemini, OpenAI, or Anthropic). Please configure an API key in the extension options.');
         return;
     }
     
     if (!currentSelectedText) {
-        alert('Please select text first to check grammar.');
+        showMainError('Please select text first to check grammar.');
         return;
     }
     
@@ -3213,7 +3688,7 @@ async function performGrammarCheck() {
         
     } catch (error) {
         console.error('Grammar check error:', error);
-        alert('Failed to check grammar. Please try again.');
+        showMainError('Failed to check grammar. Please try again.');
     } finally {
         // Reset button state
         const grammarCheckBtn = popup.querySelector('#grammar-check-btn');
@@ -3257,15 +3732,7 @@ function showGrammarCheckInline(correctedText) {
                 correctionTextDiv.textContent = correctedText;
             }
             
-            // Show replace button if in editable area
-            const replaceBtn = grammarCorrectionSection.querySelector('#replace-correction-inline');
-            if (replaceBtn) {
-                if (isStoredElementValid()) {
-                    replaceBtn.style.display = 'inline-block';
-                } else {
-                    replaceBtn.style.display = 'none';
-                }
-            }
+
             
             grammarCorrectionSection.style.display = 'block';
             
@@ -3278,7 +3745,6 @@ function showGrammarCheckInline(correctedText) {
 // Setup event listeners for inline correction buttons
 function setupInlineCorrectionButtons(correctedText) {
     const copyBtn = popup.querySelector('#copy-correction-inline');
-    const replaceBtn = popup.querySelector('#replace-correction-inline');
     
     // Copy button
     if (copyBtn) {
@@ -3294,22 +3760,6 @@ function setupInlineCorrectionButtons(correctedText) {
                     newCopyBtn.innerHTML = originalText;
                 }, 2000);
             });
-        });
-    }
-    
-    // Replace button
-    if (replaceBtn) {
-        // Remove existing listeners
-        replaceBtn.replaceWith(replaceBtn.cloneNode(true));
-        const newReplaceBtn = popup.querySelector('#replace-correction-inline');
-        
-        newReplaceBtn.addEventListener('click', () => {
-            replaceSelectedText(correctedText);
-            // Hide correction section after replacement
-            const grammarCorrectionSection = popup.querySelector('#grammar-correction-section');
-            if (grammarCorrectionSection) {
-                grammarCorrectionSection.style.display = 'none';
-            }
         });
     }
 }
@@ -3522,12 +3972,12 @@ function showGrammarCheckDialog(originalText, correctedText) {
                 </div>
                 
                 <div style="display: flex; gap: 10px; justify-content: center; margin-top: 20px;">
-                    <button id="copy-correction" style="background: #10b981; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 500;" title="Copy corrected text">
-                        📋 Copy Correction
+                    <button id="copy-correction" style="background: #10b981; color: white; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer; font-size: 11px; font-weight: 500;" title="Copy corrected text">
+                        📋 Copy
                     </button>
                     ${isStoredElementValid() ? `
-                        <button id="replace-with-correction" style="background: #3b82f6; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 500;" title="Replace selected text with correction">
-                            🔄 Replace Text
+                        <button id="replace-with-correction" style="background: #3b82f6; color: white; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer; font-size: 11px; font-weight: 500;" title="Replace selected text with correction">
+                            🔄 Replace
                         </button>
                     ` : ''}
                 </div>
@@ -3613,23 +4063,25 @@ function showGrammarCheckDialog(originalText, correctedText) {
 
 // Get AI explanation using Gemini
 async function getAIExplanationGemini(originalText, translatedText, sourceLang, settings) {
+    // Validate input text
+    if (!originalText || originalText.trim() === '') {
+        throw new Error('No text provided for AI explanation');
+    }
+    
     const sourceLanguage = getLanguageName(sourceLang);
     const targetLanguage = getLanguageName(settings.defaultTargetLang);
     
-    const prompt = `As a language expert and professional translator, please provide a detailed explanation of this translation:
+    const prompt = `Analyze this ${sourceLanguage} text in ${targetLanguage}. Keep it concise:
 
-Original (${sourceLanguage}): "${originalText}"
-Translation (${targetLanguage}): "${translatedText}"
+Text: "${originalText}"
 
-Please provide a comprehensive analysis including:
+Provide brief analysis in ${targetLanguage}:
 
-1. **Word-by-Word Breakdown**: Explain key words/phrases and their meanings
-2. **Cultural Context**: Any cultural or contextual nuances that affect the translation
-3. **Grammar Insights**: Important grammatical structures or patterns
-4. **Alternative Translations**: Other possible ways to translate this text
-5. **Language Learning Tips**: Helpful insights for understanding this type of text
+1. **Word-by-Word Breakdown**: Key words/phrases and their meanings (brief).
 
-Make your explanation clear, educational, and engaging. Use simple language that both beginners and advanced learners can understand.`;
+2. **Explain or Meaning**: Overall meaning and context (concise).
+
+Keep each section short and focused. Use ${targetLanguage} only.`;
 
     const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${settings.geminiApiKey}`, {
         method: 'POST',
@@ -3644,7 +4096,7 @@ Make your explanation clear, educational, and engaging. Use simple language that
             }],
             generationConfig: {
                 temperature: 0.3,
-                maxOutputTokens: 2000,
+                maxOutputTokens: 800,
                 topP: 0.9,
                 topK: 20
             }
@@ -3665,22 +4117,25 @@ Make your explanation clear, educational, and engaging. Use simple language that
 
 // Get AI explanation using OpenAI
 async function getAIExplanationOpenAI(originalText, translatedText, sourceLang, settings) {
+    // Validate input text
+    if (!originalText || originalText.trim() === '') {
+        throw new Error('No text provided for AI explanation');
+    }
+    
     const sourceLanguage = getLanguageName(sourceLang);
     const targetLanguage = getLanguageName(settings.defaultTargetLang);
     
-    const prompt = `As a language expert, please explain this translation in detail:
+    const prompt = `Analyze this ${sourceLanguage} text in ${targetLanguage}. Keep it concise:
 
-Original (${sourceLanguage}): "${originalText}"
-Translation (${targetLanguage}): "${translatedText}"
+Text: "${originalText}"
 
-Please provide:
-1. A breakdown of key words/phrases and their meanings
-2. Any cultural or contextual nuances
-3. Alternative translation options if applicable
-4. Grammar or linguistic insights
-5. Tips for better understanding
+Provide brief analysis in ${targetLanguage}:
 
-Keep the explanation clear and educational.`;
+1. **Word-by-Word Breakdown**: Key words/phrases and their meanings (brief).
+
+2. **Explain or Meaning**: Overall meaning and context (concise).
+
+Keep each section short and focused. Use ${targetLanguage} only.`;
 
     // Get the best available model
     const bestModel = await getBestOpenAIModel(settings.openaiApiKey);
@@ -3704,7 +4159,7 @@ Keep the explanation clear and educational.`;
                     content: prompt
                 }
             ],
-            max_tokens: 1500,
+            max_tokens: 600,
             temperature: 0.3
         })
     });
@@ -3723,22 +4178,25 @@ Keep the explanation clear and educational.`;
 
 // Get AI explanation using Anthropic
 async function getAIExplanationAnthropic(originalText, translatedText, sourceLang, settings) {
+    // Validate input text
+    if (!originalText || originalText.trim() === '') {
+        throw new Error('No text provided for AI explanation');
+    }
+    
     const sourceLanguage = getLanguageName(sourceLang);
     const targetLanguage = getLanguageName(settings.defaultTargetLang);
     
-    const prompt = `As a language expert, please explain this translation in detail:
+    const prompt = `Analyze this ${sourceLanguage} text in ${targetLanguage}. Keep it concise:
 
-Original (${sourceLanguage}): "${originalText}"
-Translation (${targetLanguage}): "${translatedText}"
+Text: "${originalText}"
 
-Please provide:
-1. A breakdown of key words/phrases and their meanings
-2. Any cultural or contextual nuances
-3. Alternative translation options if applicable
-4. Grammar or linguistic insights
-5. Tips for better understanding
+Provide brief analysis in ${targetLanguage}:
 
-Keep the explanation clear and educational.`;
+1. **Word-by-Word Breakdown**: Key words/phrases and their meanings (brief).
+
+2. **Explain or Meaning**: Overall meaning and context (concise).
+
+Keep each section short and focused. Use ${targetLanguage} only.`;
 
     const response = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
@@ -3749,7 +4207,7 @@ Keep the explanation clear and educational.`;
         },
         body: JSON.stringify({
             model: 'claude-3-haiku-20240307',
-            max_tokens: 1500,
+            max_tokens: 600,
             messages: [{
                 role: 'user',
                 content: prompt
@@ -3771,6 +4229,12 @@ Keep the explanation clear and educational.`;
 
 // Show explanation dialog
 function showExplanationDialog(explanation) {
+    // Remove existing dialog if any
+    const existingOverlay = document.getElementById('ai-explanation-overlay');
+    if (existingOverlay) {
+        existingOverlay.remove();
+    }
+    
     // Create dialog overlay
     const overlay = document.createElement('div');
     overlay.id = 'ai-explanation-overlay';
@@ -3790,6 +4254,7 @@ function showExplanationDialog(explanation) {
     
     // Create dialog
     const dialog = document.createElement('div');
+    dialog.id = 'ai-explanation-dialog';
     dialog.style.cssText = `
         background: white;
         border-radius: 12px;
@@ -3802,6 +4267,25 @@ function showExplanationDialog(explanation) {
         animation: slideIn 0.3s ease-out;
     `;
     
+    // Determine content based on explanation
+    let contentHtml;
+    if (explanation === "generating") {
+        contentHtml = `
+            <div style="display: flex; flex-direction: column; align-items: center; gap: 16px; padding: 40px; color: #0d6efd;">
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation: spin 1s linear infinite;">
+                    <path d="M21 12c0 4.97-4.03 9-9 9s-9-4.03-9-9 4.03-9 9-9c.83 0 1.64.11 2.4.31"></path>
+                </svg>
+                <div style="font-size: 16px; font-weight: 500;">AI is analyzing your text...</div>
+                <div style="font-size: 14px; color: #6c757d; text-align: center;">Please wait while we generate a detailed explanation</div>
+            </div>
+        `;
+        } else {
+        // Process AI explanation content: remove **, make titles bold, format properly
+        contentHtml = explanation
+            .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>') // Convert **text** to <strong>text</strong>
+            .replace(/\n/g, '<br>'); // Convert line breaks
+    }
+    
     dialog.innerHTML = `
         <div style="padding: 20px; border-bottom: 1px solid #e5e7eb;">
             <div style="display: flex; justify-content: space-between; align-items: center;">
@@ -3813,8 +4297,8 @@ function showExplanationDialog(explanation) {
                 </button>
             </div>
         </div>
-        <div style="padding: 20px; line-height: 1.6; color: #374151;">
-            ${explanation.replace(/\n/g, '<br>')}
+        <div id="explanation-content" style="padding: 16px; line-height: 1.4; color: #374151; font-size: ${currentSettings?.fontSize || 14}px;">
+            ${contentHtml}
         </div>
     `;
     
@@ -3862,6 +4346,18 @@ function showExplanationDialog(explanation) {
         }
     };
     document.addEventListener('keydown', handleEscape);
+}
+
+// Update explanation dialog with final content
+function updateExplanationDialog(explanation) {
+    const contentDiv = document.getElementById('explanation-content');
+    if (contentDiv) {
+        // Process content: remove **, make titles bold, format properly
+        const processedContent = explanation
+            .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>') // Convert **text** to <strong>text</strong>
+            .replace(/\n/g, '<br>'); // Convert line breaks
+        contentDiv.innerHTML = processedContent;
+    }
 }
 
 // Intelligent popup positioning - ALWAYS at icon location
@@ -4821,10 +5317,13 @@ async function showHistoryDialog() {
         overflow: hidden;
         display: flex;
         flex-direction: column;
+        direction: ltr !important;
+        text-align: left !important;
+        unicode-bidi: normal !important;
     `;
     
     const historyItems = history.length > 0 ? history.map(item => `
-        <div class="history-item" style="padding: 10px; margin: 8px; border: 1px solid #e5e7eb; border-radius: 6px; background: #fafafa; position: relative;">
+        <div class="history-item" style="padding: 10px; margin: 8px; border: 1px solid #e5e7eb; border-radius: 6px; background: #fafafa; position: relative; direction: ltr !important; text-align: left !important;">
             <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 6px;">
                 <div style="flex: 1;">
                     <div style="font-size: 10px; color: #6b7280; margin-bottom: 3px; display: flex; align-items: center; gap: 8px;">
@@ -4858,7 +5357,7 @@ async function showHistoryDialog() {
     
     historyDialog.innerHTML = `
         <!-- Header -->
-        <div style="background: #f8f9fa; padding: 10px; border-bottom: 1px solid #e5e7eb; display: flex; justify-content: space-between; align-items: center;">
+        <div style="background: #f8f9fa; padding: 10px; border-bottom: 1px solid #e5e7eb; display: flex; justify-content: space-between; align-items: center; direction: ltr !important; text-align: left !important;">
             <div>
                 <h2 style="margin: 0; font-size: 15px; font-weight: 600; color: #1f2937;">Translation History</h2>
                 <p style="margin: 1px 0 0 0; font-size: 11px; color: #6b7280;">Last ${Math.min(history.length, 50)} translations</p>
@@ -4879,7 +5378,7 @@ async function showHistoryDialog() {
         </div>
         
         <!-- History List -->
-        <div style="flex: 1; overflow-y: auto; max-height: 400px;">
+        <div style="flex: 1; overflow-y: auto; max-height: 400px; direction: ltr !important; text-align: left !important;">
             ${historyItems}
         </div>
     `;
@@ -4970,6 +5469,416 @@ async function showHistoryDialog() {
         }
     `;
     document.head.appendChild(style);
+}
+
+// Show donation dialog with crypto addresses
+function showDonationDialog() {
+    // Hide current popup first
+    if (popup) {
+        popup.style.display = 'none';
+    }
+    
+    // Create donation dialog
+    const donationDialog = document.createElement('div');
+    donationDialog.id = 'donation-dialog';
+    donationDialog.style.cssText = `
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        width: 480px;
+        max-width: 90vw;
+        background: white;
+        border-radius: 12px;
+        box-shadow: 0 15px 35px rgba(0,0,0,0.25);
+        z-index: 10001;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        overflow: hidden;
+        direction: ltr !important;
+        text-align: left !important;
+        unicode-bidi: normal !important;
+    `;
+    
+    donationDialog.innerHTML = `
+        <!-- Header -->
+        <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 20px; text-align: center; color: white;">
+            <div style="display: flex; align-items: center; justify-content: center; gap: 10px; margin-bottom: 8px;">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path>
+                </svg>
+                <h2 style="margin: 0; font-size: 22px; font-weight: 600;">Support Development</h2>
+            </div>
+            <p style="margin: 0; font-size: 14px; opacity: 0.9;">Your support helps improve this extension for everyone</p>
+        </div>
+        
+        <!-- Content -->
+        <div style="padding: 18px;">
+            <p style="margin: 0 0 16px; color: #64748b; font-size: 13px; text-align: center; line-height: 1.4;">
+                Support development with a crypto donation. Every contribution helps add new features.
+            </p>
+            
+            <!-- Crypto Addresses -->
+                            <div style="background: #f8fafc; border-radius: 8px; padding: 14px; margin-bottom: 16px;">
+                    <div style="display: grid; gap: 12px;">
+                                                 <div class="main-crypto-item" data-address="TEZrH7kkbGoSvsUUxh4ossyCUbW4WMdXzM" data-name="USDT (TRC20)" style="display: flex; align-items: center; justify-content: space-between; padding: 8px; background: white; border-radius: 6px; border: 1px solid #e2e8f0; cursor: pointer; transition: all 0.2s;" title="Click to copy address">
+                             <div style="flex: 1;">
+                                 <div style="font-weight: 600; color: #1e293b; font-size: 12px; margin-bottom: 2px;">USDT (TRC20)</div>
+                                 <div style="font-family: monospace; color: #64748b; font-size: 10px; word-break: break-all;">TEZrH7kkbGoSvsUUxh4ossyCUbW4WMdXzM</div>
+                             </div>
+                             <div style="display: flex; align-items: center; gap: 6px; margin-left: 8px;">
+                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="2">
+                                     <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                                     <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                                 </svg>
+                                 <div class="main-qr-btn" data-address="TEZrH7kkbGoSvsUUxh4ossyCUbW4WMdXzM" data-name="USDT (TRC20)" style="cursor: pointer; padding: 4px; border-radius: 3px; transition: all 0.2s; background: #3b82f6; color: white;" title="Show QR Code">
+                                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                         <rect x="3" y="3" width="5" height="5"></rect>
+                                         <rect x="16" y="3" width="5" height="5"></rect>
+                                         <rect x="3" y="16" width="5" height="5"></rect>
+                                         <path d="M21 16h-3a2 2 0 0 0-2 2v3"></path>
+                                         <path d="M21 21v.01"></path>
+                                         <path d="M12 7v3a2 2 0 0 1-2 2H7"></path>
+                                         <path d="M3 12h.01"></path>
+                                         <path d="M12 3h.01"></path>
+                                         <path d="M12 16v.01"></path>
+                                         <path d="M16 12h1"></path>
+                                         <path d="M21 12v.01"></path>
+                                         <path d="M12 21v-1"></path>
+                                     </svg>
+                                 </div>
+                             </div>
+                         </div>
+                        
+                                                 <div class="main-crypto-item" data-address="0xe160639f71A0A7b3eBf26BCEF2D302C2C03817f7" data-name="USDT (ERC20)" style="display: flex; align-items: center; justify-content: space-between; padding: 8px; background: white; border-radius: 6px; border: 1px solid #e2e8f0; cursor: pointer; transition: all 0.2s;" title="Click to copy address">
+                             <div style="flex: 1;">
+                                 <div style="font-weight: 600; color: #1e293b; font-size: 12px; margin-bottom: 2px;">USDT (ERC20)</div>
+                                 <div style="font-family: monospace; color: #64748b; font-size: 10px; word-break: break-all;">0xe160639f71A0A7b3eBf26BCEF2D302C2C03817f7</div>
+                             </div>
+                             <div style="display: flex; align-items: center; gap: 6px; margin-left: 8px;">
+                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="2">
+                                     <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                                     <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                                 </svg>
+                                 <div class="main-qr-btn" data-address="0xe160639f71A0A7b3eBf26BCEF2D302C2C03817f7" data-name="USDT (ERC20)" style="cursor: pointer; padding: 4px; border-radius: 3px; transition: all 0.2s; background: #3b82f6; color: white;" title="Show QR Code">
+                                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                         <rect x="3" y="3" width="5" height="5"></rect>
+                                         <rect x="16" y="3" width="5" height="5"></rect>
+                                         <rect x="3" y="16" width="5" height="5"></rect>
+                                         <path d="M21 16h-3a2 2 0 0 0-2 2v3"></path>
+                                         <path d="M21 21v.01"></path>
+                                         <path d="M12 7v3a2 2 0 0 1-2 2H7"></path>
+                                         <path d="M3 12h.01"></path>
+                                         <path d="M12 3h.01"></path>
+                                         <path d="M12 16v.01"></path>
+                                         <path d="M16 12h1"></path>
+                                         <path d="M21 12v.01"></path>
+                                         <path d="M12 21v-1"></path>
+                                     </svg>
+                                 </div>
+                             </div>
+                         </div>
+                         
+                         <div class="main-crypto-item" data-address="bc1q2sfafhrpytkc7y79z60yx8m6t58duk4e9kghm3" data-name="Bitcoin (BTC)" style="display: flex; align-items: center; justify-content: space-between; padding: 8px; background: white; border-radius: 6px; border: 1px solid #e2e8f0; cursor: pointer; transition: all 0.2s;" title="Click to copy address">
+                             <div style="flex: 1;">
+                                 <div style="font-weight: 600; color: #1e293b; font-size: 12px; margin-bottom: 2px;">Bitcoin (BTC)</div>
+                                 <div style="font-family: monospace; color: #64748b; font-size: 10px; word-break: break-all;">bc1q2sfafhrpytkc7y79z60yx8m6t58duk4e9kghm3</div>
+                             </div>
+                             <div style="display: flex; align-items: center; gap: 6px; margin-left: 8px;">
+                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="2">
+                                     <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                                     <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                                 </svg>
+                                 <div class="main-qr-btn" data-address="bc1q2sfafhrpytkc7y79z60yx8m6t58duk4e9kghm3" data-name="Bitcoin (BTC)" style="cursor: pointer; padding: 4px; border-radius: 3px; transition: all 0.2s; background: #3b82f6; color: white;" title="Show QR Code">
+                                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                         <rect x="3" y="3" width="5" height="5"></rect>
+                                         <rect x="16" y="3" width="5" height="5"></rect>
+                                         <rect x="3" y="16" width="5" height="5"></rect>
+                                         <path d="M21 16h-3a2 2 0 0 0-2 2v3"></path>
+                                         <path d="M21 21v.01"></path>
+                                         <path d="M12 7v3a2 2 0 0 1-2 2H7"></path>
+                                         <path d="M3 12h.01"></path>
+                                         <path d="M12 3h.01"></path>
+                                         <path d="M12 16v.01"></path>
+                                         <path d="M16 12h1"></path>
+                                         <path d="M21 12v.01"></path>
+                                         <path d="M12 21v-1"></path>
+                                     </svg>
+                                 </div>
+                             </div>
+                         </div>
+                         
+                         <div class="main-crypto-item" data-address="0xe160639f71A0A7b3eBf26BCEF2D302C2C03817f7" data-name="Ethereum (ETH)" style="display: flex; align-items: center; justify-content: space-between; padding: 8px; background: white; border-radius: 6px; border: 1px solid #e2e8f0; cursor: pointer; transition: all 0.2s;" title="Click to copy address">
+                             <div style="flex: 1;">
+                                 <div style="font-weight: 600; color: #1e293b; font-size: 12px; margin-bottom: 2px;">Ethereum (ETH)</div>
+                                 <div style="font-family: monospace; color: #64748b; font-size: 10px; word-break: break-all;">0xe160639f71A0A7b3eBf26BCEF2D302C2C03817f7</div>
+                             </div>
+                             <div style="display: flex; align-items: center; gap: 6px; margin-left: 8px;">
+                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="2">
+                                     <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                                     <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2-2v1"></path>
+                                 </svg>
+                                 <div class="main-qr-btn" data-address="0xe160639f71A0A7b3eBf26BCEF2D302C2C03817f7" data-name="Ethereum (ETH)" style="cursor: pointer; padding: 4px; border-radius: 3px; transition: all 0.2s; background: #3b82f6; color: white;" title="Show QR Code">
+                                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                         <rect x="3" y="3" width="5" height="5"></rect>
+                                         <rect x="16" y="3" width="5" height="5"></rect>
+                                         <rect x="3" y="16" width="5" height="5"></rect>
+                                         <path d="M21 16h-3a2 2 0 0 0-2 2v3"></path>
+                                         <path d="M21 21v.01"></path>
+                                         <path d="M12 7v3a2 2 0 0 1-2 2H7"></path>
+                                         <path d="M3 12h.01"></path>
+                                         <path d="M12 3h.01"></path>
+                                         <path d="M12 16v.01"></path>
+                                         <path d="M16 12h1"></path>
+                                         <path d="M21 12v.01"></path>
+                                         <path d="M12 21v-1"></path>
+                                     </svg>
+                                 </div>
+                             </div>
+                         </div>
+                    </div>
+                </div>
+            
+            <!-- Footer -->
+            <div style="text-align: center;">
+                <p style="margin: 0 0 16px; color: #64748b; font-size: 12px;">
+                    Click any address to copy • Every donation helps improve the extension
+                </p>
+                <button id="close-donation-btn" style="background: #6366f1; color: white; border: none; padding: 10px 24px; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 500; transition: background 0.2s;">
+                    Close
+                </button>
+            </div>
+        </div>
+    `;
+    
+    // Create backdrop
+    const backdrop = document.createElement('div');
+    backdrop.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.5);
+        z-index: 10000;
+    `;
+    
+    document.body.appendChild(backdrop);
+    document.body.appendChild(donationDialog);
+    
+    // Setup event handlers for the new dialog
+    setupMainDonationHandlers();
+    
+    // Close function
+    function closeDonationDialog() {
+        document.body.removeChild(backdrop);
+        document.body.removeChild(donationDialog);
+        // Show popup back if it exists
+        if (popup) {
+            popup.style.display = 'block';
+        }
+    }
+    
+    // Event listeners
+    const closeBtn = donationDialog.querySelector('#close-donation-btn');
+    closeBtn.addEventListener('click', closeDonationDialog);
+    backdrop.addEventListener('click', closeDonationDialog);
+    
+    // Add hover effects
+    const style = document.createElement('style');
+    style.textContent = `
+        .crypto-address:hover {
+            border-color: #6366f1 !important;
+            background: #f8faff !important;
+            transform: translateY(-1px);
+            box-shadow: 0 2px 8px rgba(99, 102, 241, 0.15);
+        }
+        
+        #close-donation-btn:hover {
+            background: #5b5fcf !important;
+        }
+    `;
+    document.head.appendChild(style);
+}
+
+// Show QR code for main popup 
+function showMainQRCode(address, name) {
+    // Create QR dialog
+    const qrDialog = document.createElement('div');
+    qrDialog.style.cssText = `
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        background: white;
+        border-radius: 12px;
+        box-shadow: 0 20px 40px rgba(0,0,0,0.3);
+        z-index: 10002;
+        text-align: center;
+        padding: 20px;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        direction: ltr !important;
+        text-align: center !important;
+        unicode-bidi: normal !important;
+    `;
+    
+    qrDialog.innerHTML = `
+        <h3 style="margin: 0 0 16px; color: #1e293b; font-size: 16px;">${name}</h3>
+        <img src="https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(address)}" 
+             style="width: 180px; height: 180px; border: 1px solid #e2e8f0; border-radius: 8px;" alt="QR Code" />
+        <p style="margin: 12px 0 6px; font-size: 11px; color: #64748b; word-break: break-all; font-family: monospace;">${address}</p>
+        <button id="close-main-qr-btn" style="background: #dc3545; color: white; border: none; padding: 6px 14px; border-radius: 5px; cursor: pointer; font-size: 11px; margin-top: 6px;">Close</button>
+    `;
+    
+    // Create backdrop
+    const backdrop = document.createElement('div');
+    backdrop.className = 'main-qr-backdrop';
+    backdrop.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.6);
+        z-index: 10001;
+    `;
+    
+    const closeQR = () => {
+        try {
+            if (backdrop.parentNode) document.body.removeChild(backdrop);
+            if (qrDialog.parentNode) document.body.removeChild(qrDialog);
+        } catch (e) {
+            console.log('QR dialog cleanup error:', e);
+        }
+    };
+    
+    backdrop.onclick = closeQR;
+    qrDialog.querySelector('#close-main-qr-btn').onclick = closeQR;
+    
+    document.body.appendChild(backdrop);
+    document.body.appendChild(qrDialog);
+}
+
+// Setup main donation functionality  
+function setupMainDonationHandlers() {
+    const mainCryptoItems = document.querySelectorAll('.main-crypto-item');
+    mainCryptoItems.forEach(item => {
+        item.addEventListener('click', function(e) {
+            // Prevent QR button from triggering copy
+            if (e.target.closest('.main-qr-btn')) return;
+            
+            const address = this.getAttribute('data-address');
+            const name = this.getAttribute('data-name');
+            
+            // Copy to clipboard
+            navigator.clipboard.writeText(address).then(() => {
+                // Visual feedback
+                const originalBg = this.style.background;
+                this.style.background = '#dcfce7';
+                this.style.borderColor = '#16a34a';
+                
+                // Show "Copied!" message
+                const feedbackDiv = document.createElement('div');
+                feedbackDiv.textContent = '✅ Copied!';
+                feedbackDiv.style.cssText = 'position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: #16a34a; color: white; padding: 4px 8px; border-radius: 4px; font-size: 10px; z-index: 1000; pointer-events: none;';
+                
+                this.style.position = 'relative';
+                this.appendChild(feedbackDiv);
+                
+                setTimeout(() => {
+                    this.style.background = originalBg;
+                    this.style.borderColor = '';
+                    if (feedbackDiv.parentNode) {
+                        feedbackDiv.parentNode.removeChild(feedbackDiv);
+                    }
+                }, 2000);
+            }).catch(err => {
+                console.error('Could not copy text: ', err);
+                // Fallback
+                const textArea = document.createElement('textarea');
+                textArea.value = address;
+                document.body.appendChild(textArea);
+                textArea.select();
+                document.execCommand('copy');
+                document.body.removeChild(textArea);
+            });
+        });
+        
+        // Add hover effect
+        item.addEventListener('mouseenter', function() {
+            this.style.background = '#e0f2fe';
+            this.style.borderColor = '#0891b2';
+        });
+        
+        item.addEventListener('mouseleave', function() {
+            this.style.background = 'white';
+            this.style.borderColor = '#e2e8f0';
+        });
+    });
+    
+    // Setup QR button handlers
+    const mainQrBtns = document.querySelectorAll('.main-qr-btn');
+    mainQrBtns.forEach(btn => {
+        btn.addEventListener('click', function(e) {
+            e.stopPropagation(); // Prevent copy from triggering
+            const address = this.getAttribute('data-address');
+            const name = this.getAttribute('data-name');
+            showMainQRCode(address, name);
+        });
+        
+        // Add hover effect
+        btn.addEventListener('mouseenter', function() {
+            this.style.background = '#2563eb';
+            this.style.transform = 'scale(1.05)';
+        });
+        
+        btn.addEventListener('mouseleave', function() {
+            this.style.background = '#3b82f6';
+            this.style.transform = 'scale(1)';
+        });
+    });
+}
+
+// Copy donation address to clipboard (legacy - can be removed)
+function copyDonationAddress(address, element) {
+    navigator.clipboard.writeText(address).then(() => {
+        // Visual feedback
+        const originalIcon = element.querySelector('svg');
+        const checkIcon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        checkIcon.setAttribute('width', '18');
+        checkIcon.setAttribute('height', '18');
+        checkIcon.setAttribute('viewBox', '0 0 24 24');
+        checkIcon.setAttribute('fill', 'none');
+        checkIcon.setAttribute('stroke', '#16a34a');
+        checkIcon.setAttribute('stroke-width', '2');
+        checkIcon.innerHTML = '<polyline points="20,6 9,17 4,12"></polyline>';
+        
+        element.style.borderColor = '#16a34a';
+        element.style.background = '#f0fdf4';
+        originalIcon.parentNode.replaceChild(checkIcon, originalIcon);
+        
+        setTimeout(() => {
+            element.style.borderColor = '#e2e8f0';
+            element.style.background = 'white';
+            checkIcon.parentNode.replaceChild(originalIcon, checkIcon);
+        }, 2000);
+    }).catch(err => {
+        console.error('Could not copy address: ', err);
+        // Fallback for older browsers
+        const textArea = document.createElement('textarea');
+        textArea.value = address;
+        document.body.appendChild(textArea);
+        textArea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textArea);
+        
+        // Visual feedback
+        element.style.borderColor = '#16a34a';
+        element.style.background = '#f0fdf4';
+        setTimeout(() => {
+            element.style.borderColor = '#e2e8f0';
+            element.style.background = 'white';
+        }, 2000);
+    });
 }
 
 // Listen for messages from popup and options page
@@ -5228,6 +6137,231 @@ function setupGlobalEventListeners() {
     document.addEventListener('blur', () => {
         setTimeout(handleSelectionChange, 50);
     });
+
+    // Add viewport and zoom change detection
+    window.removeEventListener('resize', handleViewportChange);
+    window.removeEventListener('orientationchange', handleViewportChange);
+    document.removeEventListener('visibilitychange', handleVisibilityChange);
+    
+    window.addEventListener('resize', handleViewportChange);
+    window.addEventListener('orientationchange', handleViewportChange);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    
+    // Detect zoom via Ctrl+Wheel (immediate detection)
+    document.addEventListener('wheel', (e) => {
+        if (e.ctrlKey) {
+            console.log('⚡ Ctrl+Wheel zoom detected - immediate closure');
+            setTimeout(handleViewportChange, 50); // Small delay to let zoom take effect
+        }
+    }, { passive: true });
+    
+    // Detect zoom via keyboard shortcuts
+    document.addEventListener('keydown', (e) => {
+        if (e.ctrlKey && (e.key === '+' || e.key === '-' || e.key === '=' || e.key === '0')) {
+            console.log('⚡ Keyboard zoom detected - immediate closure');
+            setTimeout(handleViewportChange, 50);
+        }
+    });
+    
+    // Detect zoom via Ctrl+Wheel (immediate detection)
+    document.addEventListener('wheel', (e) => {
+        if (e.ctrlKey) {
+            console.log('⚡ Ctrl+Wheel zoom detected - immediate closure');
+            setTimeout(handleViewportChange, 50); // Small delay to let zoom take effect
+        }
+    }, { passive: true });
+    
+    // Detect zoom via keyboard shortcuts
+    document.addEventListener('keydown', (e) => {
+        if (e.ctrlKey && (e.key === '+' || e.key === '-' || e.key === '=' || e.key === '0')) {
+            console.log('⚡ Keyboard zoom detected - immediate closure');
+            setTimeout(handleViewportChange, 50);
+        }
+    });
+
+    // Detect zoom changes via matchMedia
+    setupZoomDetection();
+}
+
+// Handle viewport/zoom changes
+function handleViewportChange() {
+    console.log('🔄 Viewport/zoom change detected');
+    
+    // Force close everything immediately
+    if (popup) {
+        hidePopup();
+        popup.style.display = 'none';
+        popup.style.opacity = '0';
+        popup.style.pointerEvents = 'none';
+    }
+    
+    if (selectionIcon) {
+        hideIcon();
+        if (selectionIcon) {  // Double check after hideIcon() call
+            selectionIcon.style.display = 'none';
+            selectionIcon.style.opacity = '0';
+            selectionIcon.style.pointerEvents = 'none';
+        }
+    }
+    
+    // Clear all state variables
+    currentSelectedText = '';
+    translatedText = '';
+    detectedLanguage = '';
+    lastDetectedLanguage = '';
+    isTranslating = false;
+    isPopupOpening = false;
+    isLanguageChanging = false;
+    isPopupActivelyUsed = false;
+    lastMousePosition = { x: 0, y: 0 };
+    isIconPositioned = false;
+    
+    // Clear any existing text selection
+    try {
+        if (window.getSelection) {
+            window.getSelection().removeAllRanges();
+        }
+        if (document.selection) {
+            document.selection.empty();
+        }
+    } catch (error) {
+        console.log('Could not clear selection:', error);
+    }
+    
+    console.log('🧹 Cleared all extension state after viewport change');
+    
+    // Reinitialize elements after a delay
+    setTimeout(() => {
+        if (!selectionIcon) {
+            createIcon();
+        }
+        if (!popup) {
+            createPopup();
+        }
+        console.log('🔄 Extension reinitialized after viewport change');
+    }, 200);
+}
+
+// Handle visibility changes (tab switching, minimizing, etc.)
+function handleVisibilityChange() {
+    if (document.hidden) {
+        console.log('🙈 Page hidden - hiding popup/icon');
+        hidePopup();
+        hideIcon();
+    } else {
+        console.log('👁️ Page visible - checking selection');
+        setTimeout(checkAndShowSelection, 200);
+    }
+}
+
+// Detect zoom changes using matchMedia
+function setupZoomDetection() {
+    // Track zoom level changes
+    let currentZoom = window.devicePixelRatio;
+    
+    const checkZoomChange = () => {
+        const newZoom = window.devicePixelRatio;
+        if (Math.abs(currentZoom - newZoom) > 0.05) {
+            console.log('🔍 Zoom change detected:', currentZoom, '->', newZoom);
+            currentZoom = newZoom;
+            
+            // Immediately force close everything on zoom
+            console.log('⚡ Forcing immediate closure due to zoom change');
+            handleViewportChange();
+        }
+    };
+    
+    // Check zoom periodically (every 500ms when active)
+    let zoomCheckInterval;
+    
+    const startZoomCheck = () => {
+        if (zoomCheckInterval) clearInterval(zoomCheckInterval);
+        zoomCheckInterval = setInterval(checkZoomChange, 500);
+    };
+    
+    const stopZoomCheck = () => {
+        if (zoomCheckInterval) {
+            clearInterval(zoomCheckInterval);
+            zoomCheckInterval = null;
+        }
+    };
+    
+    // Start checking when page is visible
+    if (!document.hidden) {
+        startZoomCheck();
+    }
+    
+    // Start/stop zoom checking based on visibility
+    document.addEventListener('visibilitychange', () => {
+        if (document.hidden) {
+            stopZoomCheck();
+        } else {
+            setTimeout(startZoomCheck, 100);
+        }
+    });
+    
+    // Also check zoom on focus/blur
+    window.addEventListener('focus', () => {
+        setTimeout(checkZoomChange, 100);
+        startZoomCheck();
+    });
+    
+    window.addEventListener('blur', () => {
+        stopZoomCheck();
+    });
+    
+    // Detect developer console opening/closing
+    let lastInnerHeight = window.innerHeight;
+    let lastInnerWidth = window.innerWidth;
+    
+    const checkConsoleChange = () => {
+        const currentHeight = window.innerHeight;
+        const currentWidth = window.innerWidth;
+        
+        // Detect significant height changes that might indicate console opening/closing
+        if (Math.abs(lastInnerHeight - currentHeight) > 100 || 
+            Math.abs(lastInnerWidth - currentWidth) > 100) {
+            console.log('📏 Window dimensions changed significantly:', 
+                       `${lastInnerWidth}x${lastInnerHeight}`, '->', 
+                       `${currentWidth}x${currentHeight}`);
+            lastInnerHeight = currentHeight;
+            lastInnerWidth = currentWidth;
+            handleViewportChange();
+        }
+    };
+    
+    // Check for console changes every 1 second when tab is active
+    let consoleCheckInterval;
+    
+    const startConsoleCheck = () => {
+        if (consoleCheckInterval) clearInterval(consoleCheckInterval);
+        consoleCheckInterval = setInterval(checkConsoleChange, 1000);
+    };
+    
+    const stopConsoleCheck = () => {
+        if (consoleCheckInterval) {
+            clearInterval(consoleCheckInterval);
+            consoleCheckInterval = null;
+        }
+    };
+    
+    // Start checking when page is visible
+    if (!document.hidden) {
+        startConsoleCheck();
+    }
+    
+    // Start/stop console checking based on visibility
+    document.addEventListener('visibilitychange', () => {
+        if (document.hidden) {
+            stopConsoleCheck();
+        } else {
+            setTimeout(() => {
+                lastInnerHeight = window.innerHeight;
+                lastInnerWidth = window.innerWidth;
+                startConsoleCheck();
+            }, 100);
+        }
+    });
 }
 
 document.addEventListener('DOMContentLoaded', setupGlobalEventListeners);
@@ -5480,7 +6614,7 @@ function showUniversalIconWithFadeIn(targetPosition) {
         stopMouseTracking();
         
     } catch (error) {
-        console.error('❌ Error showing universal icon:', error);
+        console.error('❌ Error showing icon with fade-in:', error);
         hideIcon();
     }
 }

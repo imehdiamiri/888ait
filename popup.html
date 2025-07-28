@@ -4,45 +4,427 @@
   <meta charset="UTF-8">
   <title>888 AI Popup Translator</title>
   <style>
+    html {
+      border-radius: 12px;
+      overflow: hidden;
+    }
+    
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
       background: #f8fafc;
       color: #1e293b;
       margin: 0;
-      padding: 18px 20px 16px 20px;
-      min-width: 220px;
-      min-height: 80px;
+      padding: 8px;
+      min-width: 320px;
+      max-width: 400px;
+      min-height: 260px;
+      border-radius: 12px;
+      overflow: hidden;
+    }
+    
+    .header {
       display: flex;
-      flex-direction: column;
+      justify-content: space-between;
       align-items: center;
-      justify-content: center;
+      margin-bottom: 8px;
+      padding-bottom: 6px;
+      border-bottom: 1px solid #e2e8f0;
     }
+    
     .title {
-      font-size: 15px;
-      font-weight: 700;
-      margin-bottom: 18px;
+      font-size: 14px;
+      font-weight: 600;
       color: #1e40af;
-      text-align: center;
     }
+    
+    .header-right {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    
+    .engine-info {
+      font-size: 10px;
+      color: #0d6efd;
+      font-weight: 600;
+      background: #e7f1ff;
+      padding: 2px 6px;
+      border-radius: 3px;
+      border: 1px solid #b6d7ff;
+    }
+    
     .options-btn {
+      background: #f1f5f9;
+      color: #64748b;
+      border: 1px solid #cbd5e1;
+      border-radius: 4px;
+      padding: 4px 6px;
+      font-size: 10px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 3px;
+      transition: all 0.2s;
+    }
+    
+    .options-btn:hover {
+      background: #e2e8f0;
+      color: #475569;
+    }
+    
+    .input-section {
+      margin-bottom: 8px;
+    }
+    
+    .label {
+      font-size: 11px;
+      font-weight: 500;
+      color: #475569;
+      margin-bottom: 3px;
+      display: block;
+    }
+    
+    .text-input {
+      width: 100%;
+      min-height: 70px;
+      padding: 6px;
+      border: 1px solid #cbd5e1;
+      border-radius: 6px;
+      font-size: 13px;
+      font-family: inherit;
+      resize: vertical;
+      box-sizing: border-box;
+    }
+    
+    .text-input:focus {
+      outline: none;
+      border-color: #3b82f6;
+      box-shadow: 0 0 0 1px #3b82f6;
+    }
+    
+    .controls {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 8px;
+      align-items: center;
+    }
+    
+    .target-lang {
+      flex: 1;
+      padding: 4px 8px;
+      border: 1px solid #cbd5e1;
+      border-radius: 4px;
+      font-size: 12px;
+      background: white;
+      cursor: pointer;
+    }
+    
+    .target-lang:focus {
+      outline: none;
+      border-color: #3b82f6;
+      box-shadow: 0 0 0 1px #3b82f6;
+    }
+    
+    .translate-btn {
       background: #3b82f6;
       color: white;
       border: none;
-      border-radius: 6px;
-      padding: 8px 18px;
-      font-size: 13px;
-      font-weight: 600;
+      border-radius: 4px;
+      padding: 6px 12px;
+      font-size: 12px;
+      font-weight: 500;
       cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 4px;
       transition: background 0.2s;
     }
-    .options-btn:hover {
+    
+    .translate-btn:hover {
       background: #2563eb;
+    }
+    
+    .translate-btn:disabled {
+      background: #94a3b8;
+      cursor: not-allowed;
+    }
+    
+    .loading {
+      animation: spin 1s linear infinite;
+    }
+    
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+    
+    .translation-section {
+      margin-bottom: 6px;
+    }
+    
+    .translation-result {
+      background: white;
+      border: 1px solid #e2e8f0;
+      border-radius: 6px;
+      padding: 6px;
+      min-height: 50px;
+      font-size: 13px;
+      line-height: 1.4;
+      color: #374151;
+      display: none;
+      position: relative;
+    }
+    
+    .translation-result.show {
+      display: block;
+    }
+    
+    .copy-section {
+      margin-bottom: 8px;
+      text-align: center;
+    }
+    
+    .copy-btn {
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 4px;
+      padding: 2px 8px;
+      cursor: pointer;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      font-size: 11px;
+      color: #475569;
+      transition: all 0.2s;
+      margin: 0 auto;
+    }
+    
+    .copy-btn:hover {
+      background: #e2e8f0;
+    }
+    
+    .copy-btn.show {
+      display: flex;
+    }
+    
+    .error {
+      color: #dc2626;
+      font-size: 12px;
+      text-align: center;
+      padding: 8px;
+    }
+    
+    .placeholder {
+      color: #94a3b8;
+      font-style: italic;
+      text-align: center;
+      padding: 15px;
+    }
+    
+    /* RTL support */
+    .rtl-text {
+      direction: rtl;
+      text-align: right;
+    }
+    
+    /* Donate button animation and hover effect */
+    @keyframes heartbeat {
+      0%, 50%, 100% { transform: scale(1); }
+      25%, 75% { transform: scale(1.05); }
+    }
+    
+    #donate-btn-pin {
+      animation: heartbeat 2s ease-in-out infinite;
+    }
+    
+    #donate-btn-pin:hover {
+      background: linear-gradient(135deg, #c82333 0%, #dc3545 100%) !important;
+      transform: translateY(-1px) scale(1.05);
+      box-shadow: 0 4px 8px rgba(220, 53, 69, 0.4) !important;
+      animation: none;
     }
   </style>
 </head>
 <body>
-  <div class="title">888 AI Popup Translator</div>
-  <button class="options-btn" id="go-to-options">Go to Options</button>
+  <div class="header">
+    <div class="title">888 AI Translator</div>
+    <div class="header-right">
+      <div class="engine-info" id="engine-info">Engine: Free</div>
+      <button class="options-btn" id="go-to-options">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"></path>
+          <circle cx="12" cy="12" r="3"></circle>
+        </svg>
+        Options
+      </button>
+    </div>
+  </div>
+  
+  <div class="input-section">
+    <label class="label">Enter text to translate:</label>
+    <textarea class="text-input" id="input-text" placeholder="Type or paste text here..."></textarea>
+    <div style="display: flex; justify-content: flex-end; margin-top: 4px;">
+      <button id="speak-original-btn" style="background: #f8f9fa; border: 1px solid #dee2e6; width: 24px; height: 24px; border-radius: 3px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.2s ease;" title="Speak original text">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#6c757d" stroke-width="2">
+          <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+          <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+        </svg>
+      </button>
+    </div>
+  </div>
+  
+  <div class="controls">
+    <label for="target-lang" style="font-size: 11px; color: #6c757d; margin-right: 6px; font-weight: 500;">To:</label>
+    <select class="target-lang" id="target-lang">
+      <option value="">Select target language...</option>
+      <option value="en">🇺🇸 English</option>
+      <option value="es">🇪🇸 Spanish</option>
+      <option value="fr">🇫🇷 French</option>
+      <option value="de">🇩🇪 German</option>
+      <option value="it">🇮🇹 Italian</option>
+      <option value="pt">🇵🇹 Portuguese</option>
+      <option value="ru">🇷🇺 Russian</option>
+      <option value="ja">🇯🇵 Japanese</option>
+      <option value="ko">🇰🇷 Korean</option>
+      <option value="zh">🇨🇳 Chinese</option>
+      <option value="ar">🇸🇦 Arabic</option>
+      <option value="fa">🇮🇷 Persian</option>
+      <option value="hi">🇮🇳 Hindi</option>
+      <option value="tr">🇹🇷 Turkish</option>
+      <option value="nl">🇳🇱 Dutch</option>
+      <option value="sv">🇸🇪 Swedish</option>
+      <option value="da">🇩🇰 Danish</option>
+      <option value="no">🇳🇴 Norwegian</option>
+      <option value="fi">🇫🇮 Finnish</option>
+      <option value="pl">🇵🇱 Polish</option>
+      <option value="cs">🇨🇿 Czech</option>
+      <option value="hu">🇭🇺 Hungarian</option>
+      <option value="ro">🇷🇴 Romanian</option>
+      <option value="bg">🇧🇬 Bulgarian</option>
+      <option value="hr">🇭🇷 Croatian</option>
+      <option value="sk">🇸🇰 Slovak</option>
+      <option value="sl">🇸🇮 Slovenian</option>
+      <option value="et">🇪🇪 Estonian</option>
+      <option value="lv">🇱🇻 Latvian</option>
+      <option value="lt">🇱🇹 Lithuanian</option>
+      <option value="uk">🇺🇦 Ukrainian</option>
+      <option value="be">🇧🇾 Belarusian</option>
+      <option value="mk">🇲🇰 Macedonian</option>
+      <option value="sr">🇷🇸 Serbian</option>
+      <option value="bs">🇧🇦 Bosnian</option>
+      <option value="me">🇲🇪 Montenegrin</option>
+      <option value="sq">🇦🇱 Albanian</option>
+      <option value="el">🇬🇷 Greek</option>
+      <option value="he">🇮🇱 Hebrew</option>
+      <option value="th">🇹🇭 Thai</option>
+      <option value="vi">🇻🇳 Vietnamese</option>
+      <option value="id">🇮🇩 Indonesian</option>
+      <option value="ms">🇲🇾 Malay</option>
+      <option value="tl">🇵�� Filipino</option>
+      <option value="sw">🇰🇪 Swahili</option>
+      <option value="am">🇪🇹 Amharic</option>
+      <option value="ha">🇳🇬 Hausa</option>
+      <option value="ig">🇳🇬 Igbo</option>
+      <option value="yo">🇳🇬 Yoruba</option>
+      <option value="zu">🇿🇦 Zulu</option>
+      <option value="af">🇿🇦 Afrikaans</option>
+    </select>
+    
+    <button class="translate-btn" id="translate-btn">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M3 5H1l2 13h1.6L7 10l2.4 8H11l2-13H11l-1.2 8L7 5H5.4L2.6 13 1.4 5H0l2 13h1.6L7 10l2.4 8H11l2-13z"></path>
+        <path d="M15 5v2"></path>
+        <path d="M15 11v6"></path>
+        <path d="M13 9h4"></path>
+        <path d="M9 9h1"></path>
+      </svg>
+      <span id="btn-text">Translate</span>
+    </button>
+  </div>
+  
+  <!-- Error Message Section -->
+  <div class="error-section" id="error-section" style="display: none; margin-bottom: 8px;">
+    <div style="background: #fee; border: 1px solid #fcc; color: #c33; padding: 6px; border-radius: 4px; font-size: 11px; text-align: center;" id="error-message">
+      <!-- Error message will appear here -->
+    </div>
+  </div>
+
+  <div class="translation-section">
+    <label class="label">Translation:</label>
+    <div class="translation-result" id="translation-result">
+      <div class="placeholder">Translation will appear here...</div>
+    </div>
+  </div>
+  
+  <div class="copy-section">
+    <button class="copy-btn" id="copy-btn" title="Copy translation">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+      </svg>
+      Copy Translation
+    </button>
+  </div>
+
+  <!-- Grammar Result Section -->
+  <div class="grammar-result-section" id="grammar-result-section" style="display: none; margin-top: 8px;">
+    <!-- Grammar Success -->
+    <div id="grammar-success" style="background: #d1e7dd; padding: 6px; border-radius: 4px; border: 1px solid #a3cfbb; text-align: center; display: none;">
+      <div style="display: flex; align-items: center; justify-content: center; gap: 6px; color: #6c757d; font-size: 11px; font-weight: 400;">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M9 12l2 2 4-4"></path>
+          <circle cx="12" cy="12" r="9"></circle>
+        </svg>
+        Perfect Grammar!
+      </div>
+    </div>
+    
+    <!-- Grammar Correction -->
+    <div id="grammar-correction" style="background: #fff3cd; padding: 6px; border-radius: 4px; border: 1px solid #ffeaa7; text-align: center; display: none;">
+      <div style="display: flex; align-items: center; justify-content: center; gap: 6px; margin-bottom: 6px;">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#dc3545" stroke-width="2">
+          <circle cx="12" cy="12" r="10"></circle>
+          <line x1="15" y1="9" x2="9" y2="15"></line>
+          <line x1="9" y1="9" x2="15" y2="15"></line>
+        </svg>
+        <span style="font-size: 11px; font-weight: 400; color: #6c757d;">Grammar Correction:</span>
+      </div>
+      <div id="grammar-corrected-text" style="font-size: 12px; line-height: 1.4; color: #856404; margin-bottom: 6px; font-weight: bold; text-align: center !important; display: block; width: 100%;">
+        <!-- Corrected text will appear here -->
+      </div>
+             <div style="display: flex; justify-content: center; gap: 6px;">
+         <button id="copy-grammar-btn" style="background: #f8f9fa; border: 1px solid #dee2e6; width: 20px; height: 20px; border-radius: 3px; cursor: pointer; display: flex; align-items: center; justify-content: center;" title="Copy correction">
+           <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#6c757d" stroke-width="2">
+             <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+             <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+           </svg>
+         </button>
+       </div>
+    </div>
+  </div>
+
+  <!-- Grammar Check Button (Bottom Center) -->
+  <div style="display: flex; justify-content: center; margin-top: 12px; padding-top: 8px; border-top: 1px solid #e2e8f0;">
+    <button class="grammar-btn" id="grammar-btn" title="Check grammar" style="background: #e7f1ff; color: #0d6efd; border: 1px solid #b6d7ff; padding: 4px 12px; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 500; display: flex; align-items: center; gap: 6px;">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M9 12l2 2 4-4"></path>
+        <circle cx="12" cy="12" r="9"></circle>
+      </svg>
+      Check Grammar
+    </button>
+  </div>
+  
+  <!-- Donate Button (Bottom Center) -->
+  <div style="display: flex; justify-content: center; margin-top: 8px; padding-top: 8px; border-top: 1px solid #f1f3f4;">
+    <button id="donate-btn-pin" title="Support Development" style="background: linear-gradient(135deg, #dc3545 0%, #e74c3c 100%); color: white; border: none; padding: 5px 14px; border-radius: 6px; cursor: pointer; font-size: 10px; font-weight: 600; display: flex; align-items: center; gap: 5px; transition: all 0.2s; box-shadow: 0 2px 4px rgba(220, 53, 69, 0.3);">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path>
+      </svg>
+      Support Development
+    </button>
+  </div>
+  
   <script src="popup.js"></script>
 </body>
 </html> 

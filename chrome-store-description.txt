@@ -1,0 +1,101 @@
+🌍 **888 AI Translation Extension - Instant Text Translation with AI Power**
+
+Transform your browsing experience with the most advanced translation extension! Select any text on any website and get instant, accurate translations with AI-powered features.
+
+✨ **KEY FEATURES:**
+
+🔥 **Instant Translation**
+• Select text → Icon appears → Click for instant translation
+• Works on ANY website, ANY language
+• Smart text filtering (ignores unwanted elements)
+• Supports 100+ languages including Finglish detection
+
+🎯 **Smart Popup Interface**
+• Clean, modern design that adapts to any website
+• Always stays within screen boundaries
+• Drag and drop functionality
+• LTR interface for consistent experience
+• Copy translation with one click
+
+🤖 **AI-Powered Features** (Premium Engines)
+• **AI Explain**: Word-by-word breakdown and meaning analysis
+• **Grammar Check**: Instant grammar correction with visual feedback
+• **Advanced Translation**: Google Gemini, OpenAI GPT, Claude support
+• **Natural Voice**: AI-powered text-to-speech
+
+🎨 **Dual Interface Options**
+• **Selection Mode**: Instant translation on text selection
+• **Pin Mode**: Standalone popup for typing and translating
+• **Browser Action**: Click extension icon for quick access
+
+🔧 **Smart Features**
+• **Finglish Detection**: Automatically detects Persian text in Latin script
+• **Editable Text Support**: Replace text directly in input fields
+• **Voice Pronunciation**: Natural human-like voices
+• **Translation History**: Access your recent translations
+• **Replace Functionality**: Update text in editable areas instantly
+
+⚡ **Performance & Privacy**
+• **Lightning Fast**: Instant response with caching
+• **Privacy First**: No data collection or tracking
+• **Offline Capable**: Core features work without internet
+• **Minimal Permissions**: Only what's needed for functionality
+
+🌐 **Multi-Engine Support**
+• **Free Mode**: Google Translate (no setup required)
+• **AI Engines**: Gemini, GPT-4, GPT-3.5, Claude
+• **Engine Switching**: Easy setup in options
+• **Cost Transparent**: Shows "(no AI)" for free mode
+
+💝 **User Experience**
+• **One-Click Setup**: Install and start translating immediately
+• **Intuitive Design**: No learning curve required
+• **Website Compatibility**: Works on all sites without conflicts
+• **Responsive Design**: Adapts to different screen sizes
+• **Zoom Friendly**: Handles page zoom automatically
+
+🎁 **Bonus Features**
+• **Donation Support**: Support development with crypto donations
+• **Regular Updates**: Continuous improvements and new features
+• **Community Driven**: Built based on user feedback
+• **Open Development**: Transparent development process
+
+📱 **Perfect For:**
+• Students and researchers
+• International business professionals
+• Language learners
+• Content creators and writers
+• Anyone browsing multilingual content
+• Social media users
+• News readers and researchers
+
+🚀 **Why Choose 888 AI Translation?**
+
+Unlike other translation extensions, we offer:
+✅ **True AI Integration** - Not just basic translation
+✅ **Finglish Support** - First extension to properly detect Persian-Latin text
+✅ **Grammar Analysis** - Real-time grammar checking and correction
+✅ **Smart UI** - Never interferes with website functionality
+✅ **Privacy Focused** - Your data stays with you
+✅ **Multi-Modal** - Text selection, typing, and voice options
+
+🎯 **Installation is Simple:**
+1. Click "Add to Chrome"
+2. Grant necessary permissions
+3. Start selecting text for instant translation!
+
+⚙️ **For Advanced Users:**
+• Configure AI engines in settings
+• Customize appearance and behavior
+• Set up API keys for premium features
+• Access advanced grammar and explanation tools
+
+Transform your browsing experience today! Join thousands of users who translate seamlessly across the web with 888 AI Translation Extension.
+
+🔒 **Privacy Promise**: We don't collect, store, or share your personal data. Your translations and settings stay private on your device.
+
+💬 **Support**: Need help? Visit our options page for comprehensive settings and support information.
+
+---
+⭐ **Rate us 5 stars** if you love the extension!
+🐛 **Report bugs** or **suggest features** - we listen to our community! 

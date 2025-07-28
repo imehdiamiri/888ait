@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "888 AI Popup Translator",
   "version": "1.0.0",
-  "description": "Instant AI-powered translation with Google Translate, OpenAI, Gemini & Anthropic. Grammar correction and text-to-speech.",
+  "description": "Instant AI translation with Google, OpenAI, Gemini & Anthropic. Grammar check, speech & smart language detection.",
   "author": "Mehdi Amiri",
   "action": {
     "default_popup": "popup.html",
@@ -24,14 +24,22 @@
     "page": "options.html",
     "open_in_tab": true
   },
-  "permissions": ["activeTab", "storage", "scripting"],
+  "permissions": ["activeTab", "storage", "tabs"],
   "host_permissions": [
     "https://translate.googleapis.com/*",
-    "https://api.cognitive.microsofttranslator.com/*", 
+    "https://api.cognitive.microsofttranslator.com/*",
     "https://libretranslate.com/*",
     "https://api.mymemory.translated.net/*",
     "https://generativelanguage.googleapis.com/*",
     "https://api.openai.com/*",
-    "https://api.anthropic.com/*"
+    "https://api.anthropic.com/*",
+    "https://*/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "css": ["content.css"]
+    }
   ]
 } 
