@@ -1,45 +1,55 @@
 {
   "manifest_version": 3,
   "name": "888 AI Popup Translator",
-  "version": "1.0.0",
-  "description": "Instant AI translation with Google, OpenAI, Gemini & Anthropic. Grammar check, speech & smart language detection.",
+  "version": "2.0.0",
+  "description": "AI translation with 7 engines: Google, Gemini, OpenAI, Claude, DeepSeek, Grok & Groq. Grammar check, speech & language detection.",
   "author": "Mehdi Amiri",
+  "homepage_url": "https://github.com/imehdiamiri/888ait",
   "action": {
     "default_popup": "popup.html",
+    "default_title": "888 AI Translator",
     "default_icon": {
       "16": "icon.png",
+      "32": "icon.png",
       "48": "icon.png",
       "128": "icon.png"
     }
   },
   "icons": {
     "16": "icon.png",
+    "32": "icon.png", 
     "48": "icon.png",
     "128": "icon.png"
   },
   "background": {
-    "service_worker": "background.js"
+    "service_worker": "background.js",
+    "type": "module"
   },
   "options_ui": {
     "page": "options.html",
     "open_in_tab": true
   },
-  "permissions": ["activeTab", "storage", "tabs"],
+  "permissions": ["storage", "activeTab"],
   "host_permissions": [
     "https://translate.googleapis.com/*",
-    "https://api.cognitive.microsofttranslator.com/*",
-    "https://libretranslate.com/*",
-    "https://api.mymemory.translated.net/*",
     "https://generativelanguage.googleapis.com/*",
     "https://api.openai.com/*",
     "https://api.anthropic.com/*",
-    "https://*/*"
+    "https://api.deepseek.com/*",
+    "https://api.x.ai/*",
+    "https://api.groq.com/*"
   ],
   "content_scripts": [
     {
       "matches": ["<all_urls>"],
       "js": ["content.js"],
-      "css": ["content.css"]
+      "css": ["content.css"],
+      "run_at": "document_idle",
+      "all_frames": false
     }
-  ]
+  ],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'; style-src 'self' 'unsafe-inline';"
+  },
+  "minimum_chrome_version": "88"
 } 

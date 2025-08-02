@@ -8,8 +8,9 @@ const defaultSettings = {
     geminiApiKey: '',
     openaiApiKey: '',
     anthropicApiKey: '',
-    libretranslateUrl: 'https://libretranslate.com',
-    libretranslateApiKey: ''
+    deepseekApiKey: '',
+    grokApiKey: '',
+    groqApiKey: ''
 };
 
 // Load settings from storage
@@ -67,6 +68,9 @@ function getCurrentSettings() {
     const geminiApiKey = document.getElementById('gemini-api-key');
     const openaiApiKey = document.getElementById('openai-api-key');
     const anthropicApiKey = document.getElementById('anthropic-api-key');
+    const deepseekApiKey = document.getElementById('deepseek-api-key');
+    const grokApiKey = document.getElementById('grok-api-key');
+    const groqApiKey = document.getElementById('groq-api-key');
     
     return {
         defaultSourceLang: 'auto',
@@ -77,8 +81,10 @@ function getCurrentSettings() {
         geminiApiKey: geminiApiKey?.value || '',
         openaiApiKey: openaiApiKey?.value || '',
         anthropicApiKey: anthropicApiKey?.value || '',
-        libretranslateUrl: 'https://libretranslate.com',
-        libretranslateApiKey: ''
+        deepseekApiKey: deepseekApiKey?.value || '',
+        grokApiKey: grokApiKey?.value || '',
+        groqApiKey: groqApiKey?.value || '',
+
     };
 }
 
@@ -123,27 +129,16 @@ function setupEventListeners() {
             
             try {
                 const settings = getCurrentSettings();
+                console.log('🔧 Saving settings:', settings);
                 const success = await saveSettings(settings);
         
-        if (success) {
+                if (success) {
+                    // Verify settings were saved by reading them back
+                    const verifySettings = await loadSettings();
+                    console.log('✅ Settings saved and verified:', verifySettings);
                     showStatus('✅ Settings saved successfully!');
             
-                    // Notify content script about settings update
-            try {
-                const tabs = await chrome.tabs.query({});
-                        for (const tab of tabs) {
-                            try {
-                                await chrome.tabs.sendMessage(tab.id, {
-                        action: 'settingsUpdated',
-                                    settings: settings
-                                });
-                            } catch (e) {
-                                // Ignore tabs that don't have content script
-                            }
-                        }
-                    } catch (e) {
-                        console.log('Could not notify content scripts:', e);
-                    }
+                    // Settings changes are automatically propagated via chrome.storage.onChanged
                 } else {
                     showStatus('❌ Failed to save settings', true);
                 }
@@ -233,19 +228,28 @@ async function loadAndApplySettings() {
             anthropicApiKey.value = settings.anthropicApiKey || '';
         }
         
+        const deepseekApiKey = document.getElementById('deepseek-api-key');
+        if (deepseekApiKey) {
+            deepseekApiKey.value = settings.deepseekApiKey || '';
+        }
+        
+        const grokApiKey = document.getElementById('grok-api-key');
+        if (grokApiKey) {
+            grokApiKey.value = settings.grokApiKey || '';
+        }
+        
+        const groqApiKey = document.getElementById('groq-api-key');
+        if (groqApiKey) {
+            groqApiKey.value = settings.groqApiKey || '';
+        }
+        
     } catch (error) {
         console.error('Error loading settings:', error);
         showStatus('⚠️ Could not load saved settings', true);
     }
 }
 
-// Initialize when DOM is loaded
-document.addEventListener('DOMContentLoaded', () => {
-    setupEventListeners();
-    loadAndApplySettings();
-    setupDefaultButton();
-    setupDonationHandlers();
-});
+// This initialization is now handled by the consolidated code below
 
 // Copy crypto address to clipboard
 function copyToClipboard(text) {
@@ -393,15 +397,16 @@ function setupDonationHandlers() {
     });
 }
 
-// Handle extension startup
+// Handle extension startup - consolidated initialization
 if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', () => {
-        setupEventListeners();
-        loadAndApplySettings();
-        setupDefaultButton();
-    });
+    document.addEventListener('DOMContentLoaded', initializeOptions);
 } else {
+    initializeOptions();
+}
+
+function initializeOptions() {
     setupEventListeners();
     loadAndApplySettings();
     setupDefaultButton();
+    setupDonationHandlers();
 } 

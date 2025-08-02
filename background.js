@@ -1,87 +1,87 @@
-// Background script for handling extension actions
+// Background service worker for 888 AI Translator
+'use strict';
 
-// Default settings
-const defaultSettings = {
+// Default settings - frozen for security
+const DEFAULT_SETTINGS = Object.freeze({
     defaultSourceLang: 'auto',
     defaultTargetLang: 'fa',
-    fontSize: '12', // Small font
+    fontSize: '12',
     textToSpeech: true,
     slowSpeechRate: 0.25,
-    translationEngine: 'free', // Free engine by default
+    translationEngine: 'free',
     aiGrammarCorrection: true,
     contextAwareTranslation: true,
     geminiApiKey: '',
     openaiApiKey: '',
     anthropicApiKey: '',
-    libretranslateUrl: 'https://libretranslate.com',
-    libretranslateApiKey: ''
-};
-
-// Handle extension installation
-chrome.runtime.onInstalled.addListener((details) => {
-    if (details.reason === 'install') {
-        chrome.storage.sync.set(defaultSettings);
-    }
+    deepseekApiKey: '',
+    grokApiKey: '',
+    groqApiKey: ''
 });
 
-// Listen for storage changes and broadcast to content scripts
-chrome.storage.onChanged.addListener((changes, namespace) => {
-    if (namespace === 'sync') {
-        chrome.storage.sync.get(defaultSettings, (settings) => {
-            chrome.tabs.query({}, (tabs) => {
-                tabs.forEach(tab => {
-                    chrome.tabs.sendMessage(tab.id, {
-                        action: 'settingsUpdated',
-                        settings: settings
-                    }).catch(() => {});
-                });
-            });
-        });
-    }
-});
+// Security: Input validation for messages
+function isValidMessage(message) {
+    if (!message || typeof message !== 'object') return false;
+    if (typeof message.action !== 'string') return false;
+    return ['openOptions', 'settingsChanged'].includes(message.action);
+}
 
-// Listen for messages from content scripts and options
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-    if (message.action === 'openOptions') {
-        // Try to open options page with enhanced error handling
-        try {
-            chrome.runtime.openOptionsPage();
-            sendResponse({success: true});
-        } catch (error) {
-            console.error('Error opening options page:', error);
-            // Try alternative method
-            try {
-                chrome.tabs.create({ url: chrome.runtime.getURL('options.html'), active: true });
-                sendResponse({success: true});
-            } catch (altError) {
-                console.error('Alternative method also failed:', altError);
-                sendResponse({success: false, error: altError.message});
-            }
+// Handle extension installation/update
+chrome.runtime.onInstalled.addListener(async (details) => {
+    try {
+        if (details.reason === 'install') {
+            await chrome.storage.sync.set(DEFAULT_SETTINGS);
+        } else if (details.reason === 'update') {
+            // Merge with existing settings to preserve user data
+            const existingSettings = await chrome.storage.sync.get();
+            const mergedSettings = { ...DEFAULT_SETTINGS, ...existingSettings };
+            await chrome.storage.sync.set(mergedSettings);
         }
-        return true; // Keep message channel open for async response
-    } else if (message.action === 'settingsChanged') {
-        // Broadcast settings change to all tabs
-        chrome.tabs.query({}, (tabs) => {
-            tabs.forEach(tab => {
-                chrome.tabs.sendMessage(tab.id, {
-                    action: 'settingsUpdated',
-                    settings: message.settings
-                }).catch(() => {});
-            });
-        });
-        sendResponse({success: true});
-        return true;
+    } catch (error) {
+        console.error('Extension installation error:', error);
     }
 });
 
-// Listen for extension suspend event and notify content scripts
-chrome.runtime.onSuspend.addListener(() => {
-    console.log('Extension being suspended, notifying content scripts...');
-    chrome.tabs.query({}, (tabs) => {
-        tabs.forEach(tab => {
-            chrome.tabs.sendMessage(tab.id, {
-                action: 'extensionSuspending'
-            }).catch(() => {});
-        });
-    });
+// Secure message handling
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    // Security check: validate sender and message
+    if (!sender.tab && !sender.url?.includes('chrome-extension://')) {
+        sendResponse({ success: false, error: 'Invalid sender' });
+        return false;
+    }
+    
+    if (!isValidMessage(message)) {
+        sendResponse({ success: false, error: 'Invalid message format' });
+        return false;
+    }
+
+    // Handle actions
+    switch (message.action) {
+        case 'openOptions':
+            handleOpenOptions(sendResponse);
+            return true; // Keep channel open for async response
+            
+        case 'settingsChanged':
+            sendResponse({ success: true });
+            return false;
+            
+        default:
+            sendResponse({ success: false, error: 'Unknown action' });
+            return false;
+    }
+});
+
+async function handleOpenOptions(sendResponse) {
+    try {
+        await chrome.runtime.openOptionsPage();
+        sendResponse({ success: true });
+    } catch (error) {
+        console.error('Failed to open options page:', error);
+        sendResponse({ success: false, error: error.message });
+    }
+}
+
+// Memory management - unload service worker gracefully
+chrome.runtime.onSuspend?.addListener(() => {
+    // Cleanup any resources if needed
 }); 

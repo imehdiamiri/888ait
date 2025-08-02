@@ -133,10 +133,10 @@
     display: inline-block !important;
 }
 
-/* RTL support ONLY for translated text content */
+/* RTL support ONLY for translated text content - but keep centered */
 #selection-popup .rtl-text {
     direction: rtl !important;
-    text-align: right !important;
+    text-align: center !important;
     unicode-bidi: embed !important;
 }
 

@@ -1,16 +1,19 @@
-// [CLEANUP] Remove all console.log and console.trace except for console.error
+// Production build - all debug logs disabled
 (function removeDebugLogs() {
     if (typeof window === 'undefined') return;
-    const origLog = console.log;
-    const origTrace = console.trace;
-    console.log = function(){};
-    console.trace = function(){};
-    // console.error remains for error reporting
+    console.log = console.trace = console.warn = function(){};
+    // Only console.error remains for critical error reporting
 })();
 
 // Global variables
 let popup = null;
 let selectionIcon = null;
+
+// Helper function to safely get className as string
+function safeGetClassName(element) {
+    if (!element || !element.className) return '';
+    return typeof element.className === 'string' ? element.className : element.className.toString();
+}
 let currentSelectedText = '';
 let translatedText = '';
 let isTranslating = false;
@@ -41,149 +44,7 @@ function hideMainError() {
         errorSection.style.display = 'none';
     }
 }
-// Function to detect Finglish text (Persian written in Latin script)
-// Uses AI detection when available, falls back to pattern matching for free mode
-async function isFinglishTextAdvanced(text, settings = null) {
-    if (!text || text.length < 5) return false;
-    
-    // Get current settings to check available engines
-    const currentSettings = settings || await getExtensionSettings();
-    const hasAIEngine = currentSettings.geminiApiKey || currentSettings.openaiApiKey || currentSettings.anthropicApiKey;
-    
-    console.log('🔍 Checking Finglish detection method - AI available:', hasAIEngine);
-    
-    if (hasAIEngine) {
-        // Use AI-powered Finglish detection
-        return await detectFinglishWithAI(text, currentSettings);
-    } else {
-        // Use pattern-based detection for free mode
-        return detectFinglishWithPatterns(text);
-    }
-}
 
-// AI-powered Finglish detection (most accurate)
-async function detectFinglishWithAI(text, settings) {
-    try {
-        console.log('🤖 Using AI Finglish detection for:', text);
-        
-        const prompt = `Analyze this text and determine if it's "Finglish" (Persian/Farsi words written in Latin/English alphabet).
-
-Text: "${text}"
-
-Instructions:
-- If the text contains Persian/Farsi words written in Latin alphabet (like "salam", "che khabar", "mikham"), respond: "FINGLISH"
-- If the text is pure English, respond: "ENGLISH" 
-- If the text is in Persian/Farsi script, respond: "PERSIAN"
-- If the text is in another language, respond: "OTHER"
-
-Respond with only one word: FINGLISH, ENGLISH, PERSIAN, or OTHER`;
-
-        let response;
-        
-        // Try Gemini first (fastest for this task)
-        if (settings.geminiApiKey) {
-            response = await callGeminiForFinglishDetection(prompt, settings.geminiApiKey);
-        } else if (settings.openaiApiKey) {
-            response = await callOpenAIForFinglishDetection(prompt, settings.openaiApiKey);
-        } else if (settings.anthropicApiKey) {
-            response = await callAnthropicForFinglishDetection(prompt, settings.anthropicApiKey);
-        }
-        
-        const result = response?.trim().toUpperCase();
-        const isFinglish = result === 'FINGLISH';
-        
-        console.log(`🤖 AI Finglish detection result: ${result} → ${isFinglish ? 'IS' : 'NOT'} Finglish`);
-        return isFinglish;
-        
-    } catch (error) {
-        console.error('AI Finglish detection failed, falling back to patterns:', error);
-        return detectFinglishWithPatterns(text);
-    }
-}
-
-// Pattern-based Finglish detection (free mode fallback)  
-function detectFinglishWithPatterns(text) {
-    const lowerText = text.toLowerCase();
-    
-    console.log('🔍 Using pattern-based Finglish detection for:', text);
-    
-    // Quick exclusions for obvious English
-    const englishMarkers = /\b(the|and|this|that|what|where|when|how|why|who|which|are|is|was|were|have|has|had|will|would|can|could|should)\b/i;
-    if (englishMarkers.test(lowerText)) {
-        console.log('❌ Contains English markers, not Finglish');
-        return false;
-    }
-    
-    // Strong Finglish indicators (only most obvious ones)
-    const strongFinglishPatterns = [
-        /\b(salam|khodahafez|mikham|nemikham|che|chetor|baba|maman|doost|khoob)\b/i,
-        /\b(khodam|khodet|khodesh)\b/i,
-        /\b\w*(kh|gh)\w*\b/i
-    ];
-    
-    for (const pattern of strongFinglishPatterns) {
-        if (pattern.test(lowerText)) {
-            console.log('✅ Strong Finglish pattern found:', pattern.source);
-            return true;
-        }
-    }
-    
-    console.log('❌ No strong Finglish indicators found');
-    return false;
-}
-
-// AI API calls for Finglish detection
-async function callGeminiForFinglishDetection(prompt, apiKey) {
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${apiKey}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            contents: [{ parts: [{ text: prompt }] }],
-            generationConfig: { maxOutputTokens: 10, temperature: 0 }
-        })
-    });
-    
-    const data = await response.json();
-    return data.candidates?.[0]?.content?.parts?.[0]?.text;
-}
-
-async function callOpenAIForFinglishDetection(prompt, apiKey) {
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-            'Authorization': `Bearer ${apiKey}`,
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-            model: 'gpt-3.5-turbo',
-            messages: [{ role: 'user', content: prompt }],
-            max_tokens: 10,
-            temperature: 0
-        })
-    });
-    
-    const data = await response.json();
-    return data.choices?.[0]?.message?.content;
-}
-
-async function callAnthropicForFinglishDetection(prompt, apiKey) {
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: {
-            'x-api-key': apiKey,
-            'Content-Type': 'application/json',
-            'anthropic-version': '2023-06-01'
-        },
-        body: JSON.stringify({
-            model: 'claude-3-haiku-20240307',
-            max_tokens: 10,
-            messages: [{ role: 'user', content: prompt }]
-        })
-    });
-    
-    const data = await response.json();
-    return data.content?.[0]?.text;
-}
 
 let lastUsedAIEngine = null; // Store last AI engine before free mode
 let autoSwitchedToFree = false; // Track if we auto-switched
@@ -343,7 +204,6 @@ const languages = {
     'doi': 'Dogri',
     'nl': 'Dutch',
     'en': 'English',
-    'finglish': 'Finglish',
     'eo': 'Esperanto',
     'et': 'Estonian',
     'ee': 'Ewe',
@@ -499,24 +359,26 @@ async function saveLanguagePreferences(sourceLang, targetLang) {
     }
 }
 
-// Update engine name in footer
-async function updateEngineNameInFooter() {
+// Update engine display and selector
+async function updateEngineDisplay(engineOverride = null) {
     if (!popup) return;
     
-    const engineNameDiv = popup.querySelector('#engine-name');
-    if (!engineNameDiv) return;
+    const engineDisplaySpan = popup.querySelector('#engine-display');
+    const engineSelector = popup.querySelector('#engine-selector');
+    if (!engineDisplaySpan || !engineSelector) return;
     
     const settings = currentSettings || await getExtensionSettings();
-    const engine = settings.translationEngine || 'free';
+    const engine = engineOverride || settings.translationEngine || 'free';
     
     // Format engine name for display
     let engineDisplayName;
+    let selectorValue = engine;
+    
     switch (engine) {
         case 'free':
-            engineDisplayName = 'Free';
-            break;
         case 'google':
-            engineDisplayName = 'Google';
+            engineDisplayName = 'Free';
+            selectorValue = 'free'; // Always use 'free' for selector
             break;
         case 'gemini':
             engineDisplayName = 'Gemini';
@@ -535,15 +397,82 @@ async function updateEngineNameInFooter() {
         case 'anthropic':
             engineDisplayName = 'Claude';
             break;
+        case 'deepseek':
+            engineDisplayName = 'DeepSeek';
+            break;
+        case 'grok':
+            engineDisplayName = 'Grok';
+            break;
+        case 'groq':
+            engineDisplayName = 'Groq';
+            break;
         default:
             engineDisplayName = engine.charAt(0).toUpperCase() + engine.slice(1);
     }
     
-    // Update with new HTML format - gray "Engine:" and blue engine name
-    if (engine === 'free' || engine === 'google') {
-        engineNameDiv.innerHTML = `<span style="color: #6c757d; font-weight: 500;">Engine:</span> <span style="color: #0d6efd; font-weight: 600;">${engineDisplayName}</span> <span style="color: #e67e00; font-weight: 600;">(No AI)</span>`;
-    } else {
-        engineNameDiv.innerHTML = `<span style="color: #6c757d; font-weight: 500;">Engine:</span> <span style="color: #0d6efd; font-weight: 600;">${engineDisplayName}</span>`;
+    // Update display text
+    engineDisplaySpan.textContent = engineDisplayName;
+    
+    // Update selector value (use 'free' for both 'free' and 'google')
+    engineSelector.value = selectorValue;
+}
+
+// Legacy function name for compatibility
+async function updateEngineNameInFooter() {
+    await updateEngineDisplay();
+}
+
+// Default settings (cached for performance)
+const DEFAULT_SETTINGS = Object.freeze({
+    defaultSourceLang: 'auto',
+    defaultTargetLang: 'fa',
+    fontSize: '12',
+    textToSpeech: true,
+    slowSpeechRate: 0.25,
+    translationEngine: 'free',
+    aiGrammarCorrection: true,
+    contextAwareTranslation: true,
+    geminiApiKey: '',
+    openaiApiKey: '',
+    anthropicApiKey: '',
+    deepseekApiKey: '',
+    grokApiKey: '',
+    groqApiKey: ''
+});
+
+function getDefaultSettings() {
+    return DEFAULT_SETTINGS;
+}
+
+// Clean any legacy Finglish references from storage
+async function cleanLegacyFinglishSettings() {
+    try {
+        if (!chrome?.storage?.sync) return;
+        
+        const settings = await chrome.storage.sync.get(null);
+        let needsUpdate = false;
+        let updates = {};
+        
+        // Clean source language
+        if (settings.defaultSourceLang === 'finglish') {
+            updates.defaultSourceLang = 'auto';
+            needsUpdate = true;
+            console.log('🧹 Cleaned legacy Finglish source language');
+        }
+        
+        // Clean target language (unlikely but just in case)
+        if (settings.defaultTargetLang === 'finglish') {
+            updates.defaultTargetLang = 'fa';
+            needsUpdate = true;
+            console.log('🧹 Cleaned legacy Finglish target language');
+        }
+        
+        if (needsUpdate) {
+            await chrome.storage.sync.set(updates);
+            console.log('✅ Legacy Finglish settings cleaned from storage');
+        }
+    } catch (error) {
+        console.warn('Could not clean legacy settings:', error);
     }
 }
 
@@ -581,24 +510,7 @@ async function getExtensionSettings() {
     }
 }
 
-function getDefaultSettings() {
-        return {
-            defaultSourceLang: 'auto',
-            defaultTargetLang: 'fa',
-            fontSize: '12',
-            textToSpeech: true,
-        slowSpeechRate: 0.25,
 
-        translationEngine: 'free',
-        aiGrammarCorrection: true,
-        contextAwareTranslation: true,
-        geminiApiKey: '',
-        openaiApiKey: '',
-        anthropicApiKey: '',
-        libretranslateUrl: 'https://libretranslate.com',
-        libretranslateApiKey: ''
-    };
-}
 
 // Ensure only one icon exists
 function ensureSingleIcon() {
@@ -834,22 +746,39 @@ function generateLanguageOptions(selectedLang = 'auto', includeAuto = true) {
 
 // Main translation function that routes to different engines
 async function translateText(text, sourceLang, targetLang) {
-    const settings = currentSettings || await getExtensionSettings();
-    let engine = settings.translationEngine || 'free';
-    
-    // If free engine is selected, always use Google Translate
-    // No need for separate AI enabled check - engine selection determines behavior
-    
-    // Check if API key is available for AI engines (Google Translate is free)
-    if (engine === 'gemini' && !settings.geminiApiKey) {
-        return 'Gemini API key is required. Please add your API key in the extension settings.';
-    } else if (engine === 'openai' && !settings.openaiApiKey) {
-        return 'OpenAI API key is required. Please add your API key in the extension settings.';
-    } else if (engine === 'anthropic' && !settings.anthropicApiKey) {
-        return 'Anthropic API key is required. Please add your API key in the extension settings.';
-    }
+    console.log('🔄 Starting translation process...');
     
     try {
+        // Ensure settings are loaded with timeout
+        const settings = await Promise.race([
+            currentSettings || getExtensionSettings(),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('Settings timeout')), 7000))
+        ]);
+        
+        let engine = settings.translationEngine || 'free';
+        console.log('🔧 Using translation engine:', engine);
+        
+        // Check if API key is available for AI engines (Google Translate is free)
+        if (engine === 'gemini' && !settings.geminiApiKey) {
+            console.log('⚠️ Gemini API key missing - falling back to free');
+            engine = 'free';
+        } else if (engine === 'openai' && !settings.openaiApiKey) {
+            console.log('⚠️ OpenAI API key missing - falling back to free');
+            engine = 'free';
+        } else if (engine === 'anthropic' && !settings.anthropicApiKey) {
+            console.log('⚠️ Anthropic API key missing - falling back to free');
+            engine = 'free';
+        } else if (engine === 'deepseek' && !settings.deepseekApiKey) {
+            console.log('⚠️ DeepSeek API key missing - falling back to free');
+            engine = 'free';
+        } else if (engine === 'grok' && !settings.grokApiKey) {
+            console.log('⚠️ Grok API key missing - falling back to free');
+            engine = 'free';
+        } else if (engine === 'groq' && !settings.groqApiKey) {
+            console.log('⚠️ Groq API key missing - falling back to free');
+            engine = 'free';
+        }
+        
         let result;
         switch (engine) {
             case 'free':
@@ -865,51 +794,82 @@ async function translateText(text, sourceLang, targetLang) {
             case 'anthropic':
                 result = await translateWithAnthropic(text, sourceLang, targetLang, settings);
                 break;
+            case 'deepseek':
+                result = await translateWithDeepSeek(text, sourceLang, targetLang, settings);
+                break;
+            case 'grok':
+                result = await translateWithGrok(text, sourceLang, targetLang, settings);
+                break;
+            case 'groq':
+                result = await translateWithGroq(text, sourceLang, targetLang, settings);
+                break;
             default:
                 // Default to Google Translate (free) if unknown engine
                 result = await translateWithGoogle(text, sourceLang, targetLang, settings);
         }
         
+        console.log('✅ Translation completed successfully');
         return result;
+        
     } catch (error) {
-        console.error(`Translation error with ${engine}:`, error);
+        console.error(`❌ Translation error:`, error);
+        
+        // If settings failed to load, use default free translation
+        if (error.message.includes('Settings timeout') || error.message.includes('Extension context invalidated')) {
+            console.log('🔄 Settings failed - using default free translation');
+            try {
+                const defaultSettings = getDefaultSettings();
+                return await translateWithGoogle(text, sourceLang, targetLang, defaultSettings);
+            } catch (fallbackError) {
+                console.error('❌ Fallback translation also failed:', fallbackError);
+                return 'Translation service temporarily unavailable. Please try again.';
+            }
+        }
         
         // Handle specific error types
         if (error.message.includes('rate limit exceeded') || error.message.includes('429')) {
-            return `Rate limit exceeded for ${engine}. Please wait a moment and try again.`;
+            return `Rate limit exceeded. Please wait a moment and try again.`;
         }
         
         // Handle API key errors
         if (error.message.includes('API key is invalid') || error.message.includes('401')) {
-            return `Invalid API key for ${engine}. Please check your API key in settings.`;
+            return `Invalid API key. Please check your API key in settings.`;
         }
         
         // Handle billing errors
         if (error.message.includes('billing issue') || error.message.includes('402')) {
-            return `Billing issue with ${engine}. Please check your account billing.`;
+            return `Billing issue. Please check your account billing.`;
         }
         
-        // Don't fallback automatically - user chose specific engine
-        return `Translation failed with ${engine}. Error: ${error.message}`;
+        // Generic error with fallback attempt
+        console.log('🔄 Attempting fallback to free translation');
+        try {
+            const defaultSettings = getDefaultSettings();
+            return await translateWithGoogle(text, sourceLang, targetLang, defaultSettings);
+        } catch (fallbackError) {
+            console.error('❌ Fallback translation failed:', fallbackError);
+            return 'Translation failed. Please try again or refresh the page.';
+        }
     }
 }
 
 // Google Translate engine (free)
 async function translateWithGoogle(text, sourceLang, targetLang, settings) {
-    // Convert Finglish to Persian for translation
-    const actualSourceLang = sourceLang === 'finglish' ? 'fa' : sourceLang;
-    const actualTargetLang = targetLang === 'finglish' ? 'fa' : targetLang;
     
-    // Google Translate API endpoint
-        const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=${actualSourceLang}&tl=${actualTargetLang}&dt=t&q=${encodeURIComponent(text)}`;
+            // Google Translate API endpoint
+        const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=${sourceLang}&tl=${targetLang}&dt=t&q=${encodeURIComponent(text)}`;
         
     try {
-        const response = await fetch(url, {
-            method: 'GET',
-            headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-            }
-        });
+        console.log('🌐 Calling Google Translate API...');
+        const response = await Promise.race([
+            fetch(url, {
+                method: 'GET',
+                headers: {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+                }
+            }),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('Network timeout')), 7000))
+        ]);
         
         if (!response.ok) {
             throw new Error(`Google Translate API error: ${response.status}`);
@@ -919,21 +879,7 @@ async function translateWithGoogle(text, sourceLang, targetLang, settings) {
         
         // Extract detected language and store it globally
         if (sourceLang === 'auto' && data && data[2]) {
-            let detectedLang = data[2];
-            
-            // Check for Finglish (Persian written in Latin script) - async check
-            if (detectedLang === 'en') {
-                try {
-                    const isFinglish = await isFinglishTextAdvanced(text, settings);
-                    if (isFinglish) {
-                        detectedLang = 'finglish';
-                    }
-                } catch (error) {
-                    console.error('Finglish detection error:', error);
-                }
-            }
-            
-            lastDetectedLanguage = detectedLang;
+            lastDetectedLanguage = data[2];
         }
         
         // Extract translation from Google's response format
@@ -964,12 +910,9 @@ async function translateWithGoogle(text, sourceLang, targetLang, settings) {
 
 // Alternative Google Translate method
 async function translateWithGoogleAlternative(text, sourceLang, targetLang) {
-    // Convert Finglish to Persian for translation
-    const actualSourceLang = sourceLang === 'finglish' ? 'fa' : sourceLang;
-    const actualTargetLang = targetLang === 'finglish' ? 'fa' : targetLang;
     
     // Use a different Google Translate endpoint
-    const url = `https://clients5.google.com/translate_a/t?client=dict-chrome-ex&sl=${actualSourceLang}&tl=${actualTargetLang}&q=${encodeURIComponent(text)}`;
+    const url = `https://clients5.google.com/translate_a/t?client=dict-chrome-ex&sl=${sourceLang}&tl=${targetLang}&q=${encodeURIComponent(text)}`;
     
     const response = await fetch(url, {
         method: 'GET',
@@ -1311,6 +1254,159 @@ async function translateWithAnthropic(text, sourceLang, targetLang, settings) {
     throw new Error('Failed to get AI explanation');
 }
 
+// DeepSeek AI engine
+async function translateWithDeepSeek(text, sourceLang, targetLang, settings) {
+    const apiKey = settings.deepseekApiKey;
+    if (!apiKey) {
+        throw new Error('DeepSeek API key is required');
+    }
+    
+    const sourceLanguage = getLanguageName(sourceLang);
+    const targetLanguage = getLanguageName(targetLang);
+    
+    const prompt = settings.contextAwareTranslation 
+        ? `Translate the following text from ${sourceLanguage} to ${targetLanguage}. Provide a natural, contextually appropriate translation that maintains the original meaning and tone. If the text contains multiple languages, translate each part appropriately:\n\n"${text}"\n\nTranslation:`
+        : `Translate this text from ${sourceLanguage} to ${targetLanguage}:\n\n"${text}"\n\nTranslation:`;
+    
+    const response = await fetch('https://api.deepseek.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+            'Authorization': `Bearer ${apiKey}`,
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            model: 'deepseek-chat',
+            messages: [{
+                role: 'user',
+                content: prompt
+            }],
+            max_tokens: 1000,
+            temperature: 0.3
+        })
+    });
+    
+    if (!response.ok) {
+        if (response.status === 429) {
+            throw new Error('DeepSeek rate limit exceeded. Please wait a moment and try again, or switch to a different translation engine.');
+        } else if (response.status === 401) {
+            throw new Error('DeepSeek API key is invalid. Please check your API key in settings.');
+        } else if (response.status === 402) {
+            throw new Error('DeepSeek billing issue. Please check your account billing.');
+        } else {
+            throw new Error(`DeepSeek API error: ${response.status} - ${response.statusText}`);
+        }
+    }
+    
+    const data = await response.json();
+    if (data && data.choices && data.choices[0] && data.choices[0].message) {
+        return data.choices[0].message.content.trim();
+    }
+    
+    throw new Error('Failed to get DeepSeek translation');
+}
+
+// Grok AI engine (X.AI)
+async function translateWithGrok(text, sourceLang, targetLang, settings) {
+    const apiKey = settings.grokApiKey;
+    if (!apiKey) {
+        throw new Error('Grok API key is required');
+    }
+    
+    const sourceLanguage = getLanguageName(sourceLang);
+    const targetLanguage = getLanguageName(targetLang);
+    
+    const prompt = settings.contextAwareTranslation 
+        ? `Translate the following text from ${sourceLanguage} to ${targetLanguage}. Provide a natural, contextually appropriate translation that maintains the original meaning and tone. If the text contains multiple languages, translate each part appropriately:\n\n"${text}"\n\nTranslation:`
+        : `Translate this text from ${sourceLanguage} to ${targetLanguage}:\n\n"${text}"\n\nTranslation:`;
+    
+    const response = await fetch('https://api.x.ai/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+            'Authorization': `Bearer ${apiKey}`,
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            model: 'grok-beta',
+            messages: [{
+                role: 'user',
+                content: prompt
+            }],
+            max_tokens: 1000,
+            temperature: 0.3
+        })
+    });
+    
+    if (!response.ok) {
+        if (response.status === 429) {
+            throw new Error('Grok rate limit exceeded. Please wait a moment and try again, or switch to a different translation engine.');
+        } else if (response.status === 401) {
+            throw new Error('Grok API key is invalid. Please check your API key in settings.');
+        } else if (response.status === 402) {
+            throw new Error('Grok billing issue. Please check your account billing.');
+        } else {
+            throw new Error(`Grok API error: ${response.status} - ${response.statusText}`);
+        }
+    }
+    
+    const data = await response.json();
+    if (data && data.choices && data.choices[0] && data.choices[0].message) {
+        return data.choices[0].message.content.trim();
+    }
+    
+    throw new Error('Failed to get Grok translation');
+}
+
+// Groq AI engine
+async function translateWithGroq(text, sourceLang, targetLang, settings) {
+    const apiKey = settings.groqApiKey;
+    if (!apiKey) {
+        throw new Error('Groq API key is required');
+    }
+    
+    const sourceLanguage = getLanguageName(sourceLang);
+    const targetLanguage = getLanguageName(targetLang);
+    
+    const prompt = settings.contextAwareTranslation 
+        ? `Translate the following text from ${sourceLanguage} to ${targetLanguage}. Provide a natural, contextually appropriate translation that maintains the original meaning and tone. If the text contains multiple languages, translate each part appropriately:\n\n"${text}"\n\nTranslation:`
+        : `Translate this text from ${sourceLanguage} to ${targetLanguage}:\n\n"${text}"\n\nTranslation:`;
+    
+    const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+            'Authorization': `Bearer ${apiKey}`,
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            model: 'llama-3.1-70b-versatile',
+            messages: [{
+                role: 'user',
+                content: prompt
+            }],
+            max_tokens: 1000,
+            temperature: 0.3
+        })
+    });
+    
+    if (!response.ok) {
+        if (response.status === 429) {
+            throw new Error('Groq rate limit exceeded. Please wait a moment and try again, or switch to a different translation engine.');
+        } else if (response.status === 401) {
+            throw new Error('Groq API key is invalid. Please check your API key in settings.');
+        } else if (response.status === 402) {
+            throw new Error('Groq billing issue. Please check your account billing.');
+        } else {
+            throw new Error(`Groq API error: ${response.status} - ${response.statusText}`);
+        }
+    }
+    
+    const data = await response.json();
+    if (data && data.choices && data.choices[0] && data.choices[0].message) {
+        return data.choices[0].message.content.trim();
+    }
+    
+    throw new Error('Failed to get Groq translation');
+}
+
 // AI Grammar Correction function
 async function applyGrammarCorrection(text, targetLang, settings) {
     // Try to use available AI services for grammar correction
@@ -1407,6 +1503,8 @@ async function correctGrammarWithAnthropic(text, targetLang, apiKey) {
 // Text-to-speech function with natural voice selection for AI engines
 async function speakText(text, lang, rate = 1) {
     if ('speechSynthesis' in window) {
+        console.log('🔊 Starting speech with text:', text.substring(0, 50), 'lang:', lang, 'rate:', rate);
+        
         // Stop any ongoing speech
         speechSynthesis.cancel();
         
@@ -1415,31 +1513,47 @@ async function speakText(text, lang, rate = 1) {
         utterance.pitch = 1;
         utterance.volume = 1;
         
+        // Add event listeners for debugging
+        utterance.onstart = () => console.log('✅ Speech started successfully');
+        utterance.onend = () => console.log('✅ Speech ended successfully');
+        utterance.onerror = (e) => console.error('❌ Speech error:', e.error, e);
+        utterance.onpause = () => console.log('⏸️ Speech paused');
+        utterance.onresume = () => console.log('▶️ Speech resumed');
+        
         // Get current settings to check if using AI engine
         const settings = currentSettings || await getExtensionSettings();
         const isAIEngine = settings.translationEngine && 
                           ['gemini', 'openai', 'anthropic'].includes(settings.translationEngine);
         
+        // Wait for voices to be loaded (for all engines)
+        let voices = speechSynthesis.getVoices();
+        if (voices.length === 0) {
+            console.log('🔊 No voices loaded yet, waiting...');
+            // Wait for voices to load
+            await new Promise(resolve => {
+                speechSynthesis.onvoiceschanged = () => {
+                    voices = speechSynthesis.getVoices();
+                    console.log('🔊 Voices loaded:', voices.length);
+                    resolve();
+                };
+                // Fallback timeout
+                setTimeout(() => {
+                    voices = speechSynthesis.getVoices();
+                    console.log('🔊 Fallback timeout, voices:', voices.length);
+                    resolve();
+                }, 2000);
+            });
+        } else {
+            console.log('🔊 Voices already available:', voices.length);
+        }
+        
         // Enhanced voice selection for AI engines
         if (isAIEngine) {
-            // Wait for voices to be loaded
-            let voices = speechSynthesis.getVoices();
-            if (voices.length === 0) {
-                // Wait for voices to load
-                await new Promise(resolve => {
-                    speechSynthesis.onvoiceschanged = () => {
-                        voices = speechSynthesis.getVoices();
-                        resolve();
-                    };
-                    // Fallback timeout
-                    setTimeout(resolve, 1000);
-                });
-            }
             
             // Language mapping for better voice selection
             const langMap = {
                 'fa': 'fa-IR',
-                'finglish': 'fa-IR',  // ✅ Finglish should use Persian voice
+            
                 'ar': 'ar-SA', 
                 'en': 'en-US',
                 'es': 'es-ES',
@@ -1453,9 +1567,8 @@ async function speakText(text, lang, rate = 1) {
                 'zh': 'zh-CN'
             };
             
-            // Convert Finglish to Persian for voice selection
-            const speechLang = lang === 'finglish' ? 'fa' : lang;
-            const targetLang = langMap[speechLang] || speechLang;
+            
+                          const targetLang = langMap[lang] || lang;
             
             // Find the best natural voice for the language
             const naturalVoice = voices.find(voice => {
@@ -1467,23 +1580,81 @@ async function speakText(text, lang, rate = 1) {
                         voice.name.includes('Enhanced') ||
                         voice.localService === false); // Cloud voices are usually better
             }) || voices.find(voice => {
-                return voice.lang.toLowerCase().startsWith(speechLang.toLowerCase());
+                return voice.lang.toLowerCase().startsWith(lang.toLowerCase());
             });
             
             if (naturalVoice) {
                 utterance.voice = naturalVoice;
                 utterance.lang = naturalVoice.lang;
-                console.log('🔊 Using enhanced voice for AI engine:', naturalVoice.name);
+                console.log('🔊 Using enhanced voice for AI engine:', naturalVoice.name, 'Lang:', naturalVoice.lang);
             } else {
                 utterance.lang = targetLang;
+                console.log('🔊 No enhanced voice found, using default with lang:', targetLang);
+                
+                // Log available voices for debugging
+                console.log('🔊 Available voices for', lang + ':', voices.filter(v => 
+                    v.lang.toLowerCase().startsWith(lang.toLowerCase())).map(v => v.name + ' (' + v.lang + ')'));
             }
         } else {
-            // Standard voice selection for free engines
-            const speechLang = lang === 'finglish' ? 'fa' : lang;
-            utterance.lang = speechLang === 'fa' ? 'fa-IR' : speechLang === 'ar' ? 'ar-SA' : speechLang;
+            // Standard voice selection for free engines - enhanced
+            const langMap = {
+                'fa': 'fa-IR',
+                'ar': 'ar-SA',
+                'en': 'en-US',
+                'es': 'es-ES',
+                'fr': 'fr-FR',
+                'de': 'de-DE'
+            };
+            
+            const targetLang = langMap[lang] || lang;
+            utterance.lang = targetLang;
+            
+            // Try to find a good voice even for free engines
+            const langCode = lang.substring(0, 2);
+            const preferredVoice = voices.find(voice => 
+                voice.lang.toLowerCase().startsWith(langCode.toLowerCase())
+            );
+            
+            if (preferredVoice) {
+                utterance.voice = preferredVoice;
+                console.log('🔊 Using voice for free engine:', preferredVoice.name, 'Lang:', preferredVoice.lang);
+            } else {
+                console.log('🔊 No specific voice found for', langCode, 'using browser default with lang:', targetLang);
+                // Log available voices for this language
+                const availableForLang = voices.filter(v => 
+                    v.lang.toLowerCase().startsWith(langCode.toLowerCase()));
+                console.log('🔊 Available voices for', langCode + ':', availableForLang.map(v => v.name + ' (' + v.lang + ')'));
+            }
         }
         
+        // Final attempt - if no voice was found and it's Persian, try with a fallback
+        if (!utterance.voice && (lang === 'fa' || lang.startsWith('fa'))) {
+            console.log('🔊 No Persian voice found, trying fallback approaches...');
+            
+            // Try different Persian language codes
+            const persianCodes = ['fa-IR', 'fa', 'per'];
+            for (const code of persianCodes) {
+                const fallbackVoice = voices.find(v => v.lang.toLowerCase() === code.toLowerCase());
+                if (fallbackVoice) {
+                    utterance.voice = fallbackVoice;
+                    utterance.lang = fallbackVoice.lang;
+                    console.log('🔊 Found fallback Persian voice:', fallbackVoice.name);
+                    break;
+                }
+            }
+            
+            // Last resort: use any available voice but keep Persian lang code
+            if (!utterance.voice && voices.length > 0) {
+                utterance.voice = voices[0]; // Use first available voice
+                utterance.lang = 'fa-IR'; // Keep Persian language code
+                console.log('🔊 Using first available voice as last resort:', voices[0].name);
+            }
+        }
+        
+        console.log('🔊 Final utterance setup - Voice:', utterance.voice?.name || 'Browser default', 'Lang:', utterance.lang);
         speechSynthesis.speak(utterance);
+    } else {
+        console.error('❌ Speech synthesis not available');
     }
 }
 
@@ -1721,13 +1892,10 @@ function speakLanguageSegment(text, lang, rate = 1) {
         const utterance = new SpeechSynthesisUtterance(text);
         utterance.rate = rate;
         
-        // Convert Finglish to Persian for speech
-        const speechLang = lang === 'finglish' ? 'fa' : lang;
-        
         // Try to find a voice for the specific language
         const voices = window.speechSynthesis.getVoices();
-        const voice = voices.find(v => v.lang.startsWith(speechLang)) || 
-                     voices.find(v => v.lang.startsWith(speechLang.split('-')[0]));
+        const voice = voices.find(v => v.lang.startsWith(lang)) || 
+                     voices.find(v => v.lang.startsWith(lang.split('-')[0]));
         
         if (voice) {
             utterance.voice = voice;
@@ -1914,10 +2082,7 @@ function checkAndShowSelection() {
 
 // Get language name from code
 function getLanguageName(langCode) {
-    // Convert Finglish to Persian for AI translation prompts
-    if (langCode === 'finglish') {
-        return 'Persian (Finglish - Persian written in Latin script)';
-    }
+
     return languages[langCode] || langCode || 'Unknown';
 }
 
@@ -1991,7 +2156,7 @@ async function showPopup() {
                 <path d="M8 21l-4-4 4-4"></path>
                 <path d="M4 17h16"></path>
             </svg>
-             <span style="font-weight: 500; line-height: 1; white-space: nowrap;">Replace</span>
+             <span style="font-weight: 400; line-height: 1; white-space: nowrap;">Replace</span>
         </button>
     ` : '';
     
@@ -2010,33 +2175,33 @@ async function showPopup() {
                         <path d="M1 1L5 5L9 1" stroke="#6c757d" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
                     </svg>
                     <select id="target-lang" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; z-index: 1;">
-                        ${generateLanguageOptions(prefs.target, false)}
-                    </select>
+                    ${generateLanguageOptions(prefs.target, false)}
+                </select>
                 </div>
             </div>
             
             <!-- Control Icons Only (Right) -->
             <div style="display: flex; gap: 8px; align-items: center;">
-                <div id="history-btn" style="cursor: pointer; color: #6c757d; transition: all 0.2s ease; display: flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 3px;" title="History">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <div id="donate-btn" style="cursor: pointer; color: #dc3545; transition: all 0.2s ease; display: flex; align-items: center; justify-content: center; width: 16px; height: 16px; border-radius: 3px;" title="Support Development">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path>
+                    </svg>
+                </div>
+                <div id="history-btn" style="cursor: pointer; color: #6c757d; transition: all 0.2s ease; display: flex; align-items: center; justify-content: center; width: 16px; height: 16px; border-radius: 3px;" title="History">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path>
                         <path d="M3 3v5h5"></path>
                         <path d="M12 7v5l4 2"></path>
                     </svg>
                 </div>
-                <div id="settings-btn" style="cursor: pointer; color: #6c757d; transition: all 0.2s ease; display: flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 3px;" title="Settings">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <div id="settings-btn" style="cursor: pointer; color: #6c757d; transition: all 0.2s ease; display: flex; align-items: center; justify-content: center; width: 16px; height: 16px; border-radius: 3px;" title="Settings">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"></path>
                         <circle cx="12" cy="12" r="3"></circle>
                     </svg>
                 </div>
-                <div id="donate-btn" style="cursor: pointer; color: #dc3545; transition: all 0.2s ease; display: flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 3px;" title="Support Development">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path>
-                    </svg>
-                </div>
-                <div id="close-btn" style="cursor: pointer; color: #6c757d; transition: all 0.2s ease; display: flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 3px;" title="Close">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <div id="close-btn" style="cursor: pointer; color: #6c757d; transition: all 0.2s ease; display: flex; align-items: center; justify-content: center; width: 16px; height: 16px; border-radius: 3px;" title="Close">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <line x1="18" y1="6" x2="6" y2="18"></line>
                         <line x1="6" y1="6" x2="18" y2="18"></line>
                     </svg>
@@ -2055,18 +2220,11 @@ async function showPopup() {
         <div style="padding: 4px 6px;">
             <!-- Language Detection Section -->
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-                <div id="detected-lang" style="font-size: 12px; color: #6c757d; flex: 1;">
+                <div id="detected-lang" style="font-size: 10px; color: #6c757d; flex: 1;">
                     Detecting language...
                 </div>
                 <!-- Action Buttons Row -->
                 <div style="display: flex; gap: 4px; align-items: center;">
-                    <!-- Copy Original Text Button -->
-                    <button id="copy-original-btn" style="background: #f8f9fa !important; border: 1px solid #dee2e6 !important; width: 22px !important; height: 22px !important; border-radius: 3px !important; cursor: pointer !important; display: flex !important; align-items: center !important; justify-content: center !important; transition: all 0.2s ease !important; padding: 0 !important; margin: 0 !important; box-sizing: border-box !important;" title="Copy original text">
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#6c757d" stroke-width="2" style="display: block !important; margin: 0 auto !important;">
-                            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-                            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-                        </svg>
-                    </button>
                     ${settings.textToSpeech ? `
                         <!-- Speech Buttons -->
                         <button id="speak-normal" style="background: #f8f9fa !important; border: 1px solid #dee2e6 !important; width: 22px !important; height: 22px !important; border-radius: 3px !important; cursor: pointer !important; display: flex !important; align-items: center !important; justify-content: center !important; transition: all 0.2s ease !important; padding: 0 !important; margin: 0 !important; box-sizing: border-box !important;" title="Normal speed">
@@ -2092,16 +2250,50 @@ async function showPopup() {
                     <!-- Translation will appear here -->
                 </div>
                 
-                <!-- Action Buttons (Below Translation, Centered) -->
-                <div style="display: flex; justify-content: center; gap: 6px; margin-top: 4px; align-items: center;">
-                    <!-- Copy Translation Button -->
-                    <button id="copy-btn" style="background: #f8f9fa !important; border: 1px solid #dee2e6 !important; width: 24px !important; height: 24px !important; border-radius: 3px !important; cursor: pointer !important; display: flex !important; align-items: center !important; justify-content: center !important; transition: all 0.2s ease !important; padding: 0 !important; margin: 0 !important; box-sizing: border-box !important;" title="Copy translation">
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#6c757d" stroke-width="2" style="display: block !important; margin: 0 auto !important;">
+                <!-- Engine Info and Action Buttons -->
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 4px; gap: 6px;">
+                    <!-- Engine selector on left -->
+                    <div style="display: flex; align-items: center; gap: 4px; font-size: 10px; color: #6c757d;">
+                        <span>Engine:</span>
+                        <div style="position: relative; display: inline-flex; align-items: center; background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 3px; padding: 2px 4px; cursor: pointer; transition: all 0.2s;" id="engine-selector-container">
+                            <span id="engine-display" style="color: #0d6efd; font-size: 10px; font-weight: 500; margin-right: 3px;">
+                                Loading...
+                            </span>
+                            <svg width="8" height="5" viewBox="0 0 10 6" fill="none" style="pointer-events: none;">
+                                <path d="M1 1L5 5L9 1" stroke="#6c757d" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                            <select id="engine-selector" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; z-index: 1;">
+                                <option value="free">Free</option>
+                                <option value="gemini">Gemini</option>
+                                <option value="openai">OpenAI</option>
+                                <option value="anthropic">Claude</option>
+                                <option value="deepseek">DeepSeek</option>
+                                <option value="grok">Grok</option>
+                                <option value="groq">Groq</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <!-- Buttons on right -->
+                    <div style="display: flex; align-items: center; gap: 4px;">
+                    ${replaceButtonHTML}
+                        ${settings.textToSpeech ? `
+                        <!-- Speech Translation Button -->
+                        <button id="speak-translation-btn" style="background: #f8f9fa !important; border: 1px solid #dee2e6 !important; width: 22px !important; height: 22px !important; border-radius: 3px !important; cursor: pointer !important; display: flex !important; align-items: center !important; justify-content: center !important; transition: all 0.2s ease !important; padding: 0 !important; margin: 0 !important; box-sizing: border-box !important;" title="Speak translation">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#6c757d" stroke-width="2" style="display: block !important; margin: 0 auto !important;">
+                                <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+                                <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+                            </svg>
+                        </button>
+                        ` : ''}
+                        <!-- Copy Translation Button -->
+                        <button id="copy-btn" style="background: #f8f9fa !important; border: 1px solid #dee2e6 !important; width: 22px !important; height: 22px !important; border-radius: 3px !important; cursor: pointer !important; display: flex !important; align-items: center !important; justify-content: center !important; transition: all 0.2s ease !important; padding: 0 !important; margin: 0 !important; box-sizing: border-box !important;" title="Copy translation">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#6c757d" stroke-width="2" style="display: block !important; margin: 0 auto !important;">
                             <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
                             <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
                         </svg>
                     </button>
-                    ${replaceButtonHTML}
+                    </div>
                 </div>
             </div>
             
@@ -2152,55 +2344,24 @@ async function showPopup() {
         
         <!-- Footer - Always show with different content based on engine -->
         <div id="footer" style="background: #f8f9fa; padding: 3px 6px; border-top: 1px solid #dee2e6; display: flex; justify-content: space-between; align-items: center; height: 26px; gap: 6px; margin-top: 1px;">
-                        ${settings.translationEngine === 'free' ? `
-                <!-- Free Engine Footer -->
-            <div style="display: flex; align-items: center; gap: 6px;">
-                    <!-- Engine Name (Left) -->
-                    <div id="engine-name" style="font-size: 9px; font-weight: 500;"><span style="color: #6c757d; font-weight: 500;">Engine:</span> <span style="color: #0d6efd; font-weight: 600;">Free</span> <span style="color: #e67e00; font-weight: 600;">(no AI)</span></div>
-                </div>
-                <div style="display: flex; gap: 6px; align-items: center;">
-                                         <button id="ai-explain-btn" style="background: #e7f1ff !important; border: none !important; padding: 2px 6px !important; border-radius: 4px !important; cursor: pointer !important; display: flex !important; align-items: center !important; gap: 3px !important; transition: all 0.2s ease !important; font-size: 10px !important; color: #0d6efd !important; font-weight: 600 !important; white-space: nowrap !important; flex-direction: row !important; justify-content: center !important; min-height: 22px !important; max-height: 22px !important; height: 22px !important; line-height: 1.2 !important; box-sizing: border-box !important;" title="AI Explain">
-                         <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink: 0 !important; display: inline-block !important; vertical-align: middle !important;">
-                             <path d="M12 2L2 7l10 5 10-5-10-5z"></path>
-                             <path d="M2 17l10 5 10-5"></path>
-                             <path d="M2 12l10 5 10-5"></path>
-                         </svg>
-                         <span style="white-space: nowrap !important; line-height: 1 !important;">AI Explain</span>
-                     </button>
-                     <button id="grammar-check-btn" style="background: #fff4e6 !important; border: none !important; padding: 2px 6px !important; border-radius: 4px !important; cursor: pointer !important; display: flex !important; align-items: center !important; gap: 3px !important; transition: all 0.2s ease !important; font-size: 10px !important; color: #e67e00 !important; font-weight: 600 !important; white-space: nowrap !important; flex-direction: row !important; justify-content: center !important; min-height: 22px !important; max-height: 22px !important; height: 22px !important; line-height: 1 !important; box-sizing: border-box !important;" title="Check Grammar">
-                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink: 0 !important; display: inline-block !important; vertical-align: middle !important;">
-                             <path d="M9 12l2 2 4-4"></path>
-                             <circle cx="12" cy="12" r="9"></circle>
-                         </svg>
-                         <span style="white-space: nowrap !important; line-height: 1 !important;">Check Grammar</span>
-                     </button>
-            </div>
-                        ` : `
-                <!-- AI Engine Footer -->
-                <div style="display: flex; align-items: center; gap: 6px;">
-                    <!-- Engine Name (Left) -->
-                    <div id="engine-name" style="font-size: 9px; font-weight: 500;"><span style="color: #6c757d; font-weight: 500;">Engine:</span> <span style="color: #0d6efd; font-weight: 600;">Loading...</span></div>
-                </div>
-                <div style="display: flex; gap: 6px; align-items: center;">
-                    <button id="ai-explain-btn" style="background: #e7f1ff !important; border: none !important; padding: 2px 6px !important; border-radius: 4px !important; cursor: pointer !important; display: flex !important; align-items: center !important; gap: 3px !important; transition: all 0.2s ease !important; font-size: 10px !important; color: #0d6efd !important; font-weight: 600 !important; white-space: nowrap !important; flex-direction: row !important; justify-content: center !important; min-height: 22px !important; max-height: 22px !important; height: 22px !important; line-height: 1.2 !important; box-sizing: border-box !important;" title="AI Explain">
-                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink: 0 !important; display: inline-block !important; vertical-align: middle !important;">
-                            <path d="M12 2L2 7l10 5 10-5-10-5z"></path>
-                            <path d="M2 17l10 5 10-5"></path>
-                            <path d="M2 12l10 5 10-5"></path>
-                        </svg>
-                        <span style="display: inline-block !important; white-space: nowrap !important; line-height: 1.2 !important; vertical-align: middle !important;">AI Explain</span>
-                    </button>
-                    
-                    <!-- Grammar Check Button -->
-                    <button id="grammar-check-btn" style="background: #fff4e6 !important; border: none !important; padding: 2px 6px !important; border-radius: 4px !important; cursor: pointer !important; display: flex !important; align-items: center !important; gap: 3px !important; transition: all 0.2s ease !important; font-size: 10px !important; color: #e67e00 !important; font-weight: 600 !important; white-space: nowrap !important; flex-direction: row !important; justify-content: center !important; min-height: 22px !important; max-height: 22px !important; height: 22px !important; line-height: 1 !important; box-sizing: border-box !important;" title="Check Grammar">
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink: 0 !important; display: inline-block !important;">
-                            <path d="M9 12l2 2 4-4"></path>
-                            <circle cx="12" cy="12" r="9"></circle>
-                        </svg>
-                        <span style="display: inline-block !important; white-space: nowrap !important; line-height: 1 !important;">Check Grammar</span>
-                    </button>
-                </div>
-            `}
+                        <!-- AI Explain Button (Left) -->
+                        <button id="ai-explain-btn" style="background: #e7f1ff !important; border: none !important; padding: 2px 6px !important; border-radius: 4px !important; cursor: pointer !important; display: flex !important; align-items: center !important; gap: 3px !important; transition: all 0.2s ease !important; font-size: 10px !important; color: #0d6efd !important; font-weight: 600 !important; white-space: nowrap !important; flex-direction: row !important; justify-content: center !important; min-height: 22px !important; max-height: 22px !important; height: 22px !important; line-height: 1.2 !important; box-sizing: border-box !important;" title="AI Explain">
+                            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink: 0 !important; display: inline-block !important; vertical-align: middle !important;">
+                                <path d="M12 2L2 7l10 5 10-5-10-5z"></path>
+                                <path d="M2 17l10 5 10-5"></path>
+                                <path d="M2 12l10 5 10-5"></path>
+                            </svg>
+                            <span style="white-space: nowrap !important; line-height: 1 !important;">AI Explain</span>
+                        </button>
+                        
+                        <!-- Grammar Check Button (Right) -->
+                        <button id="grammar-check-btn" style="background: #e7f1ff !important; border: none !important; padding: 2px 6px !important; border-radius: 4px !important; cursor: pointer !important; display: flex !important; align-items: center !important; gap: 3px !important; transition: all 0.2s ease !important; font-size: 10px !important; color: #0d6efd !important; font-weight: 600 !important; white-space: nowrap !important; flex-direction: row !important; justify-content: center !important; min-height: 22px !important; max-height: 22px !important; height: 22px !important; line-height: 1 !important; box-sizing: border-box !important;" title="Check Grammar">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink: 0 !important; display: inline-block !important; vertical-align: middle !important;">
+                                <path d="M9 12l2 2 4-4"></path>
+                                <circle cx="12" cy="12" r="9"></circle>
+                            </svg>
+                            <span style="white-space: nowrap !important; line-height: 1 !important;">Check Grammar</span>
+                        </button>
         </div>
         
         <style>
@@ -2255,12 +2416,24 @@ async function showPopup() {
                 box-shadow: 0 1px 2px rgba(0,0,0,0.1);
             }
             
+            #engine-selector-container:hover {
+                background: #e9ecef !important;
+                border-color: #adb5bd !important;
+                transform: translateY(-1px);
+                box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            }
+            
+            #engine-selector-container:active {
+                transform: translateY(0px);
+                box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+            }
+            
             #target-lang {
                 border: none !important;
                 outline: none !important;
             }
             
-            #speak-normal:hover, #speak-slow:hover, #copy-original-btn:hover, #copy-btn:hover {
+            #speak-normal:hover, #speak-slow:hover, #speak-translation-btn:hover, #copy-btn:hover {
                 background: #e9ecef !important;
                 border-color: #adb5bd !important;
                 transform: scale(1.1) !important;
@@ -2330,7 +2503,7 @@ async function showPopup() {
     console.log('✅ Popup fully opened - cleared opening flag');
     
     // Update engine name in footer
-    updateEngineNameInFooter();
+            updateEngineDisplay();
     
     // Hide grammar sections initially
     hideGrammarSections();
@@ -2363,21 +2536,7 @@ async function detectSingleLanguage(text) {
         
         // Extract detected language from response
         if (data && data[2]) {
-            let detectedLang = data[2];
-            
-            // Check for Finglish (Persian written in Latin script) - async check
-            if (detectedLang === 'en') {
-                try {
-                    const isFinglish = await isFinglishTextAdvanced(text);
-                    if (isFinglish) {
-                        detectedLang = 'finglish';
-                    }
-                } catch (error) {
-                    console.error('Finglish detection error:', error);
-                }
-            }
-            
-            return detectedLang;
+            return data[2];
         }
         
         return 'auto';
@@ -2420,21 +2579,16 @@ async function performTranslation() {
             lastUsedAIEngine = settings.translationEngine;
         }
         
-        // Set 5-second timeout for AI translation
-        if (settings.translationEngine !== 'free' && settings.translationEngine !== 'google') {
-            translationTimeout = setTimeout(async () => {
-                console.log('⏰ Translation timeout - switching to free mode');
-                await switchToFreeMode();
-            }, 5000);
-        }
-        
         // Always use the source language from preferences (auto or specific)
         let sourceLang = prefs.source;
         
-        // Use the main translation function which handles all engines
-        // console.log('🔤 Input text:', currentSelectedText);
-        translatedText = await translateText(currentSelectedText, sourceLang, prefs.target);
-        // console.log('🔤 Translation result:', translatedText);
+        // Use the main translation function which handles all engines with timeout
+        console.log('🔤 Starting translation with timeout...');
+        translatedText = await Promise.race([
+            translateText(currentSelectedText, sourceLang, prefs.target),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('Translation timeout')), 10000))
+        ]);
+        console.log('🔤 Translation completed:', translatedText.substring(0, 50) + '...');
         
         // Clear timeout if translation succeeded
         if (translationTimeout) {
@@ -2473,14 +2627,14 @@ async function performTranslation() {
             detectedLangDiv.textContent = `Source: ${languageName}`;
         }
             
-        // Show translation with RTL support
+        // Show translation with RTL support - always centered
             if (translationResult) {
                 const isTargetRTL = isRTLLanguage(prefs.target);
                 const rtlClass = isTargetRTL ? 'rtl-text' : '';
             const fontSize = settings.fontSize || 12;
                 
                 translationResult.innerHTML = `
-                <div class="${rtlClass}" style="font-size: ${fontSize}px; padding: 8px;">${translatedText}</div>
+                <div class="${rtlClass}" style="font-size: ${fontSize}px; padding: 8px; text-align: center !important;">${translatedText}</div>
                 `;
             }
             
@@ -2507,6 +2661,41 @@ async function performTranslation() {
         if (!popup || !isExtensionContextValid()) {
             isTranslating = false;
             return;
+        }
+        
+        // Handle timeout errors specifically
+        if (error.message.includes('Translation timeout')) {
+            console.log('⏰ Translation timed out - attempting fallback');
+            try {
+                const prefs = await getLanguagePreferences();
+                const defaultSettings = getDefaultSettings();
+                const fallbackTranslation = await translateWithGoogle(currentSelectedText, prefs.source, prefs.target, defaultSettings);
+                
+        if (translationResult) {
+                    const fontSize = currentSettings ? currentSettings.fontSize : 12;
+                    const isTargetRTL = isRTLLanguage(prefs.target);
+                    const rtlClass = isTargetRTL ? 'rtl-text' : '';
+                    translationResult.innerHTML = `
+                        <div class="${rtlClass}" style="font-size: ${fontSize}px; padding: 8px; text-align: center !important;">${fallbackTranslation}</div>
+                    `;
+                    
+                    // Show timeout warning in proper error section
+                    showMainError('⚡ Timeout - Used Free Engine');
+                }
+                
+                if (loadingState) loadingState.style.display = 'none';
+                if (translationSection) translationSection.style.display = 'block';
+                
+                await saveTranslationToHistory(currentSelectedText, fallbackTranslation, detectedLanguage || 'auto', prefs.target);
+                setupTranslationButtons();
+                setupLanguageSelectorListeners();
+                isTranslating = false;
+                return;
+                
+            } catch (fallbackError) {
+                console.error('Fallback translation also failed:', fallbackError);
+                // Continue to regular error handling below
+            }
         }
         
         if (translationResult) {
@@ -2555,7 +2744,7 @@ async function performTranslation() {
                                 const isTargetRTL = isRTLLanguage(prefs.target);
                                 const rtlClass = isTargetRTL ? 'rtl-text' : '';
                                 translationResult.innerHTML = `
-                                    <div class="${rtlClass}" style="font-size: ${fontSize}px; padding: 8px;">${freeTranslation}</div>
+                                    <div class="${rtlClass}" style="font-size: ${fontSize}px; padding: 8px; text-align: center !important;">${freeTranslation}</div>
                                     <div style="text-align: center; margin-top: 8px; padding: 6px; background: #ecfdf5; border-radius: 4px; font-size: 11px; color: #059669; direction: ltr !important;">
                                         ✅ Translated with Free Engine (Google Translate)
                                     </div>
@@ -2665,11 +2854,11 @@ async function switchToFreeMode() {
                     const fontSize = currentSettings ? currentSettings.fontSize : 14;
                     
                     translationResult.innerHTML = `
-                        <div class="${rtlClass}" style="font-size: ${fontSize}px; padding: 8px;">${translatedText}</div>
-                        <div style="text-align: center; margin-top: 8px; padding: 6px; background: #fef3c7; border-radius: 4px; font-size: 11px; color: #d97706; direction: ltr !important;">
-                            ⚡ Auto-switched to Free Mode due to timeout
-                        </div>
+                        <div class="${rtlClass}" style="font-size: ${fontSize}px; padding: 8px; text-align: center !important;">${translatedText}</div>
                     `;
+                    
+                    // Show timeout warning in proper error section
+                    showMainError('⚡ Auto-switched to Free Mode due to timeout');
                 }
                 
                 if (loadingState) loadingState.style.display = 'none';
@@ -2812,6 +3001,13 @@ function setupTranslationButtons() {
         return;
     }
     
+    // Speech translation button
+    const speakTranslationBtn = popup.querySelector('#speak-translation-btn');
+    if (speakTranslationBtn) {
+        speakTranslationBtn.removeEventListener('click', handleSpeakTranslationClick); // Remove existing listener
+        speakTranslationBtn.addEventListener('click', handleSpeakTranslationClick);
+    }
+    
     // Copy button
     const copyBtn = popup.querySelector('#copy-btn');
     if (copyBtn) {
@@ -2848,6 +3044,33 @@ function setupLanguageSelectorListeners() {
         console.log('🔗 Target language listener setup complete for dropdown with', targetLang.options.length, 'options');
     } else {
         console.log('❌ Target language dropdown not found');
+    }
+}
+
+// Setup event listener for engine selector
+function setupEngineSelectorListener() {
+    if (!popup || !isExtensionContextValid()) return;
+    
+    const engineSelector = popup.querySelector('#engine-selector');
+    
+    if (engineSelector) {
+        // Remove existing listeners to prevent duplicates
+        engineSelector.removeEventListener('change', handleEngineChange);
+        engineSelector.addEventListener('change', async function(event) {
+            console.log('🔧 Engine changed to:', event.target.value);
+            
+            // Update the display text immediately
+            const engineDisplay = popup.querySelector('#engine-display');
+            if (engineDisplay) {
+                await updateEngineDisplay(event.target.value);
+            }
+            
+            // Save the new engine setting
+            await handleEngineChange(event);
+        });
+        console.log('🔗 Engine selector listener setup complete');
+    } else {
+        console.log('❌ Engine selector dropdown not found');
     }
 }
 
@@ -2904,6 +3127,75 @@ async function handleTargetLanguageChange(event) {
     }
 }
 
+// Engine selector change handler
+async function handleEngineChange(event) {
+    console.log('🔧 Engine change triggered:', event.target.value);
+    
+    // Check if popup still exists and context is valid
+    if (!popup || !isExtensionContextValid()) {
+        console.log('❌ Popup or context invalid in handleEngineChange');
+        return;
+    }
+    
+    const newEngine = event.target.value;
+    
+    try {
+        // Get current settings to check API keys
+        const settings = await getExtensionSettings();
+        
+        // Validate API keys for premium engines
+        if (newEngine === 'gemini' && !settings.geminiApiKey) {
+            showMainError('Please enter Gemini API key in Options first');
+            // Revert selector to current engine
+            await updateEngineDisplay(settings.translationEngine);
+            return;
+        } else if (newEngine === 'openai' && !settings.openaiApiKey) {
+            showMainError('Please enter OpenAI API key in Options first');
+            // Revert selector to current engine
+            await updateEngineDisplay(settings.translationEngine);
+            return;
+        } else if (newEngine === 'anthropic' && !settings.anthropicApiKey) {
+            showMainError('Please enter Claude API key in Options first');
+            // Revert selector to current engine
+            await updateEngineDisplay(settings.translationEngine);
+            return;
+        } else if (newEngine === 'deepseek' && !settings.deepseekApiKey) {
+            showMainError('Please enter DeepSeek API key in Options first');
+            // Revert selector to current engine
+            await updateEngineDisplay(settings.translationEngine);
+            return;
+        } else if (newEngine === 'grok' && !settings.grokApiKey) {
+            showMainError('Please enter Grok API key in Options first');
+            // Revert selector to current engine
+            await updateEngineDisplay(settings.translationEngine);
+            return;
+        } else if (newEngine === 'groq' && !settings.groqApiKey) {
+            showMainError('Please enter Groq API key in Options first');
+            // Revert selector to current engine
+            await updateEngineDisplay(settings.translationEngine);
+            return;
+        }
+        
+        // Save the new engine setting
+        settings.translationEngine = newEngine;
+        await chrome.storage.sync.set(settings);
+        
+        // Update current settings cache
+        currentSettings = settings;
+        
+        console.log('💾 Engine preference saved:', newEngine);
+        console.log('🔄 Starting translation with new engine');
+        
+        // Perform translation with new engine
+        await performTranslation();
+        
+        console.log('✅ Translation completed with new engine:', newEngine);
+    } catch (error) {
+        console.error('Error updating engine:', error);
+        showMainError('Failed to change engine. Please try again.');
+    }
+}
+
 // Copy button click handler
 function handleCopyClick() {
     if (translatedText && popup && isExtensionContextValid()) {
@@ -2930,6 +3222,215 @@ function handleCopyClick() {
         }).catch(error => {
             console.error('Failed to copy text:', error);
         });
+    }
+}
+
+// Speech translation button click handler with pause functionality
+async function handleSpeakTranslationClick(event) {
+    // Prevent event bubbling that might close popup
+    if (event) {
+        event.stopPropagation();
+        event.preventDefault();
+    }
+    
+    console.log('🔊 Speech button clicked - translatedText:', translatedText ? translatedText.substring(0, 50) : 'EMPTY');
+    
+    // Try to get translated text from the DOM if global variable is empty
+    if (!translatedText && popup) {
+        const translationDiv = popup.querySelector('#translation-result div:not(.error)');
+        if (translationDiv) {
+            translatedText = translationDiv.textContent || translationDiv.innerText || '';
+            console.log('🔊 Got text from DOM:', translatedText.substring(0, 50));
+        }
+    }
+    
+    if (translatedText && popup && isExtensionContextValid()) {
+        try {
+            const speakBtn = popup.querySelector('#speak-translation-btn');
+            
+            // Check if speech is currently playing
+            if (speechSynthesis.speaking) {
+                // Pause/stop speech
+                speechSynthesis.cancel();
+                
+                // Restore original play icon
+                if (speakBtn) {
+                    speakBtn.innerHTML = `
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#6c757d" stroke-width="2">
+                            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+                            <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+                        </svg>
+                    `;
+                }
+                return;
+            }
+            
+            // Get target language for speech
+            const prefs = await getLanguagePreferences();
+            const targetLang = prefs.target;
+            
+            // Change to pause icon
+            if (speakBtn) {
+                speakBtn.innerHTML = `
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="2">
+                        <rect x="6" y="4" width="4" height="16"></rect>
+                        <rect x="14" y="4" width="4" height="16"></rect>
+                    </svg>
+                `;
+            }
+            
+            // Speak the translated text
+            speakText(translatedText, targetLang, 1);
+            
+            // Restore play icon when speech ends
+            const checkSpeechEnd = setInterval(() => {
+                if (!speechSynthesis.speaking) {
+                    clearInterval(checkSpeechEnd);
+                    if (speakBtn && popup && isExtensionContextValid()) {
+                        speakBtn.innerHTML = `
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#6c757d" stroke-width="2">
+                            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+                            <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+                        </svg>
+                        `;
+                    }
+                }
+            }, 100);
+            
+        } catch (error) {
+            console.error('Failed to speak translation:', error);
+        }
+    }
+}
+
+// Normal speed speech button click handler with pause functionality
+async function handleSpeakNormalClick(event) {
+    // Prevent event bubbling that might close popup
+    if (event) {
+        event.stopPropagation();
+        event.preventDefault();
+    }
+    
+    console.log('🔊 Normal speech button clicked');
+    
+    if (currentSelectedText && popup && isExtensionContextValid()) {
+        try {
+            const speakBtn = popup.querySelector('#speak-normal');
+            
+            // Check if speech is currently playing
+            if (speechSynthesis.speaking) {
+                // Pause/stop speech
+                speechSynthesis.cancel();
+                
+                // Restore original play icon
+                if (speakBtn) {
+                    speakBtn.innerHTML = `
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#6c757d" stroke-width="2">
+                            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+                            <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+                        </svg>
+                    `;
+                }
+                return;
+            }
+            
+            // Change to pause icon
+            if (speakBtn) {
+                speakBtn.innerHTML = `
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="2">
+                        <rect x="6" y="4" width="4" height="16"></rect>
+                        <rect x="14" y="4" width="4" height="16"></rect>
+                    </svg>
+                `;
+            }
+            
+            // Speak the selected text at normal speed
+            speakText(currentSelectedText, detectedLanguage || 'auto', 1);
+            
+            // Restore play icon when speech ends
+            const checkSpeechEnd = setInterval(() => {
+                if (!speechSynthesis.speaking) {
+                    clearInterval(checkSpeechEnd);
+                    if (speakBtn && popup && isExtensionContextValid()) {
+                        speakBtn.innerHTML = `
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#6c757d" stroke-width="2">
+                                <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+                                <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+                            </svg>
+                        `;
+                    }
+                }
+            }, 100);
+            
+        } catch (error) {
+            console.error('Failed to speak normal:', error);
+        }
+    }
+}
+
+// Slow speed speech button click handler with pause functionality
+async function handleSpeakSlowClick(event) {
+    // Prevent event bubbling that might close popup
+    if (event) {
+        event.stopPropagation();
+        event.preventDefault();
+    }
+    
+    console.log('🔊 Slow speech button clicked');
+    
+    if (currentSelectedText && popup && isExtensionContextValid()) {
+        try {
+            const speakBtn = popup.querySelector('#speak-slow');
+            
+            // Check if speech is currently playing
+            if (speechSynthesis.speaking) {
+                // Pause/stop speech
+                speechSynthesis.cancel();
+                
+                // Restore original play icon
+                if (speakBtn) {
+                    speakBtn.innerHTML = `
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#6c757d" stroke-width="2">
+                            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+                            <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+                        </svg>
+                    `;
+                }
+                return;
+            }
+            
+            // Change to pause icon
+            if (speakBtn) {
+                speakBtn.innerHTML = `
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="2">
+                        <rect x="6" y="4" width="4" height="16"></rect>
+                        <rect x="14" y="4" width="4" height="16"></rect>
+                    </svg>
+                `;
+            }
+            
+            // Speak the selected text at slow speed
+            const rate = currentSettings ? currentSettings.slowSpeechRate : 0.25;
+            speakText(currentSelectedText, detectedLanguage || 'auto', rate);
+            
+            // Restore play icon when speech ends
+            const checkSpeechEnd = setInterval(() => {
+                if (!speechSynthesis.speaking) {
+                    clearInterval(checkSpeechEnd);
+                    if (speakBtn && popup && isExtensionContextValid()) {
+                        speakBtn.innerHTML = `
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#6c757d" stroke-width="2">
+                                <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+                                <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+                            </svg>
+                        `;
+                    }
+                }
+            }, 100);
+            
+        } catch (error) {
+            console.error('Failed to speak slow:', error);
+        }
     }
 }
 
@@ -3041,11 +3542,10 @@ async function openSettingsQuietly() {
             return false;
         },
         
-        // Method 3: Create tab
+        // Method 3: Alternative runtime method
         async () => {
-            if (chrome.tabs && chrome.tabs.create) {
-                const optionsUrl = chrome.runtime.getURL('options.html');
-                await chrome.tabs.create({ url: optionsUrl, active: true });
+            if (chrome.runtime && chrome.runtime.openOptionsPage) {
+                await chrome.runtime.openOptionsPage();
                 return true;
             }
             return false;
@@ -3179,17 +3679,16 @@ async function openOptionsPageWithFallback() {
         console.log('❌ Method 2 (manual URL) failed:', error);
     }
     
-    // Method 3: chrome.tabs.create with context validation
+    // Method 3: Alternative runtime method with context validation
     try {
-        if (isExtensionContextValid() && chrome.tabs && chrome.tabs.create) {
-            console.log('🔧 Trying Method 3: chrome.tabs.create');
-            const optionsUrl = chrome.runtime.getURL('options.html');
-            await chrome.tabs.create({ url: optionsUrl, active: true });
+        if (isExtensionContextValid() && chrome.runtime && chrome.runtime.openOptionsPage) {
+            console.log('🔧 Trying Method 3: chrome.runtime.openOptionsPage (alternative)');
+            await chrome.runtime.openOptionsPage();
             console.log('✅ Method 3 succeeded');
             return;
         }
     } catch (error) {
-        console.log('❌ Method 3 (tabs.create) failed:', error);
+        console.log('❌ Method 3 (runtime alternative) failed:', error);
     }
     
     // Method 4: chrome.runtime.sendMessage to background
@@ -3375,48 +3874,26 @@ async function setupEventListeners() {
     // Setup language selectors
     setupLanguageSelectorListeners();
     
-    // Speech buttons
+    // Setup engine selector
+    setupEngineSelectorListener();
+    
+    // Speech buttons with play/pause functionality
     const speakNormal = popup.querySelector('#speak-normal');
     const speakSlow = popup.querySelector('#speak-slow');
     
     if (speakNormal) {
-        speakNormal.addEventListener('click', () => {
-            speakText(currentSelectedText, detectedLanguage || 'auto', 1);
+        speakNormal.addEventListener('click', (event) => {
+            handleSpeakNormalClick(event);
         });
     }
     
     if (speakSlow) {
-        speakSlow.addEventListener('click', () => {
-            const rate = currentSettings ? currentSettings.slowSpeechRate : 0.25;
-            speakText(currentSelectedText, detectedLanguage || 'auto', rate);
+        speakSlow.addEventListener('click', (event) => {
+            handleSpeakSlowClick(event);
         });
     }
     
-    // Copy original text button
-    const copyOriginalBtn = popup.querySelector('#copy-original-btn');
-    if (copyOriginalBtn) {
-        copyOriginalBtn.addEventListener('click', async () => {
-            try {
-                await navigator.clipboard.writeText(currentSelectedText);
-                showCopyFeedback(copyOriginalBtn, 'Original text copied!');
-            } catch (error) {
-                console.error('Error copying original text:', error);
-                // Fallback for older browsers
-                try {
-                    const textArea = document.createElement('textarea');
-                    textArea.value = currentSelectedText;
-                    document.body.appendChild(textArea);
-                    textArea.select();
-                    document.execCommand('copy');
-                    document.body.removeChild(textArea);
-                    showCopyFeedback(copyOriginalBtn, 'Original text copied!');
-                } catch (fallbackError) {
-                    console.error('Fallback copy failed:', fallbackError);
-                    showCopyFeedback(copyOriginalBtn, 'Copy failed!', false);
-                }
-            }
-        });
-    }
+
     
     // Grammar check button (with retry mechanism since it might not be in DOM initially)
     if (popup) {
@@ -3470,9 +3947,9 @@ async function setupEventListeners() {
                 await chrome.runtime.sendMessage({ action: 'openOptions' });
             } catch (error) {
                 console.error('Error opening options:', error);
-                // Fallback: try direct method
+                // Fallback: try alternative method
                 try {
-                    chrome.tabs.create({ url: chrome.runtime.getURL('options.html') });
+                    chrome.runtime.openOptionsPage();
                 } catch (fallbackError) {
                     console.error('Fallback failed:', fallbackError);
                     showMainError('Please click the extension icon and select Settings to configure AI engines.');
@@ -4430,20 +4907,74 @@ function positionPopup() {
     popup.style.top = top + 'px';
     popup.style.zIndex = '2147483646';
     
-    // Restore visibility
+    // Ensure popup remains visible and interactive
     popup.style.visibility = 'visible';
     popup.style.display = 'block';
+    popup.style.pointerEvents = 'auto';
+    
+    // Force redraw to ensure visibility
+    popup.offsetHeight;
+}
+
+// Smart popup positioning to always stay within viewport
+function positionPopupInViewport() {
+    if (!popup) return;
+    
+    // Get current popup position and dimensions
+    const popupRect = popup.getBoundingClientRect();
+    const viewport = {
+        width: window.innerWidth,
+        height: window.innerHeight
+    };
+    
+    const margin = 15;
+    let left = parseFloat(popup.style.left) || popupRect.left;
+    let top = parseFloat(popup.style.top) || popupRect.top;
+    
+    // Adjust horizontal position if popup goes outside viewport
+    if (left + popupRect.width > viewport.width - margin) {
+        left = viewport.width - popupRect.width - margin;
+    }
+    if (left < margin) {
+        left = margin;
+    }
+    
+    // Adjust vertical position if popup goes outside viewport
+    if (top + popupRect.height > viewport.height - margin) {
+        top = viewport.height - popupRect.height - margin;
+    }
+    if (top < margin) {
+        top = margin;
+    }
+    
+    // Apply the new position
+    popup.style.position = 'fixed';
+    popup.style.left = left + 'px';
+    popup.style.top = top + 'px';
+    popup.style.zIndex = '2147483646';
+    popup.style.visibility = 'visible';
+    popup.style.display = 'block';
+    popup.style.pointerEvents = 'auto';
+    
+    console.log(`📍 Popup repositioned to: ${left}, ${top} (viewport: ${viewport.width}x${viewport.height})`);
 }
 
 // Hide popup
 function hidePopup() {
     isPopupOpening = false;
     isPopupActivelyUsed = false; // Reset popup usage flag
-            if (popup && popup.parentNode) {
+    
+    // Stop any ongoing speech when popup is closed
+    if ('speechSynthesis' in window) {
+        speechSynthesis.cancel();
+        console.log('🔇 Speech stopped - popup closed');
+    }
+    
+    if (popup && popup.parentNode) {
         popup.style.pointerEvents = 'none';
         popup.parentNode.removeChild(popup);
     }
-                popup = null;
+    popup = null;
 }
 
 // Check if element is input or textarea
@@ -4478,7 +5009,8 @@ function isExcludedElement(element) {
         'sidebar', 'widget', 'control', 'ui-', 'form-control', 'link'
     ];
     
-    const className = element.className || '';
+    // Safely get className as string (handle DOMTokenList)
+    const className = safeGetClassName(element);
     const id = element.id || '';
     
     for (const excludedClass of excludedClasses) {
@@ -5030,10 +5562,28 @@ window.addEventListener('error', function(event) {
         errorMessage.includes('PUBLIC_GetOneTapSettings') ||
         errorSource.includes('gsi') ||
         errorSource.includes('accounts.google.com') ||
-        errorSource.includes('gstatic.com')) {
+        errorSource.includes('gstatic.com') ||
+        errorSource.includes('inpage.js') ||
+        errorMessage.includes("Cannot read properties of null (reading 'type')")) {
         // Prevent the error from appearing in console
         event.preventDefault();
         event.stopPropagation();
+        return false;
+    }
+});
+
+// Also suppress unhandled promise rejections from external sources
+window.addEventListener('unhandledrejection', function(event) {
+    const errorMessage = event.reason?.message || event.reason || '';
+    const errorStack = event.reason?.stack || '';
+    
+    // Suppress inpage.js and other external promise rejections
+    if (errorStack.includes('inpage.js') ||
+        errorMessage.includes("Cannot read properties of null (reading 'type')") ||
+        errorStack.includes('gsi') ||
+        errorStack.includes('accounts.google.com')) {
+        // Prevent the error from appearing in console
+        event.preventDefault();
         return false;
     }
 });
@@ -5077,15 +5627,26 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // Add click listener to hide icon when clicking elsewhere
     document.addEventListener('click', (e) => {
-        console.log('📋 First click listener - target:', e.target.tagName, e.target.className, 'ID:', e.target.id);
-        
+        // Isolate our extension logic from website scripts
+        try {
+            // Validate event and target safely
+            if (!e || !e.target) return;
+            // Safely get className as string
+            const targetClassName = safeGetClassName(e.target);
+            console.log('📋 First click listener - target:', e.target.tagName, targetClassName, 'ID:', e.target.id);
+            
         // Don't hide if clicking on the icon or popup
         if (selectionIcon && (e.target === selectionIcon || selectionIcon.contains(e.target))) {
-            console.log('📋 Click on icon - ignoring');
+                console.log('📋 Click on icon - ignoring');
             return;
         }
         if (popup && (e.target === popup || popup.contains(e.target))) {
-            console.log('📋 Click on popup - ignoring');
+                console.log('📋 Click on popup - ignoring');
+                return;
+            }
+        } catch (error) {
+            // Silently handle any errors to prevent interference with page scripts
+            console.warn('Extension click handler error (non-critical):', error);
             return;
         }
         
@@ -5104,7 +5665,7 @@ document.addEventListener('DOMContentLoaded', () => {
         console.log('📋 Checking selection after click');
         // Check if there's still selection after click
         setTimeout(handleSelectionChange, 50);
-    });
+    }, true); // Use capture phase to handle before website scripts
 });
 
 // Also add listeners when DOM is already loaded
@@ -5126,36 +5687,89 @@ function setupSelectionListeners() {
     
     // Add click listener to hide popup when clicking elsewhere  
     document.addEventListener('click', (e) => {
-        console.log('🖱️ Click detected on:', e.target.tagName, e.target.className, 'ID:', e.target.id);
-        
-        // Don't hide if clicking on the icon or popup
-        if (selectionIcon && (e.target === selectionIcon || selectionIcon.contains(e.target))) {
-            console.log('🖱️ Click on icon - ignoring');
-            return;
+        // Isolate our extension logic from website scripts
+        try {
+            // Validate event and target safely
+            if (!e || !e.target) return;
+            // Safely get className as string
+            const targetClassName = safeGetClassName(e.target);
+            console.log('🖱️ Click detected on:', e.target.tagName, targetClassName, 'ID:', e.target.id);
+            
+            // Don't hide if clicking on the icon or popup
+            if (selectionIcon && (e.target === selectionIcon || selectionIcon.contains(e.target))) {
+                console.log('🖱️ Click on icon - ignoring');
+                return;
+            }
+            if (popup && (e.target === popup || popup.contains(e.target))) {
+                console.log('🖱️ Click on popup - ignoring');
+                return;
+            }
+            
+            // Don't hide if clicking on popup elements (including dropdowns)
+            if (popup && e.target.closest && e.target.closest('#selection-popup')) {
+                console.log('🖱️ Click on popup element - ignoring');
+                return;
+            }
+            
+            // Don't hide if clicking on select options or dropdown elements
+            if (e.target.tagName === 'OPTION' || e.target.tagName === 'SELECT') {
+                console.log('🖱️ Click on select element - ignoring');
+                return;
+            }
+            
+            // If popup is open, hide it when clicking elsewhere
+            if (popup && popup.style.opacity === '1') {
+                console.log('🖱️ Clicked outside popup - hiding popup');
+                hidePopup();
+                
+                // Also clear selection and hide icon since user clicked away
+                setTimeout(() => {
+                    const selection = window.getSelection();
+                    if (selection) {
+                        selection.removeAllRanges();
+                    }
+                    currentSelectedText = '';
+                    if (selectionIcon) {
+                        hideIcon();
+                    }
+                }, 100);
+                return;
+            }
+            
+            // Check if there's still selection after click (with delay to avoid conflict)
+            setTimeout(() => {
+                console.log('🖱️ Checking selection after outside click');
+                handleSelectionChange();
+            }, 150);
+        } catch (error) {
+            // Silently handle any errors to prevent interference with page scripts
+            console.warn('Extension click handler error (non-critical):', error);
         }
-        if (popup && (e.target === popup || popup.contains(e.target))) {
-            console.log('🖱️ Click on popup - ignoring');
-            return;
-        }
-        
-        // Don't hide if clicking on popup elements (including dropdowns)
-        if (popup && e.target.closest && e.target.closest('#selection-popup')) {
-            console.log('🖱️ Click on popup element - ignoring');
-            return;
-        }
-        
-        // Don't hide if clicking on select options or dropdown elements
-        if (e.target.tagName === 'OPTION' || e.target.tagName === 'SELECT') {
-            console.log('🖱️ Click on select element - ignoring');
-            return;
-        }
-        
-        // If popup is open, hide it when clicking elsewhere
+    }, true); // Use capture phase to handle before website scripts
+    
+    // Handle window resize to reposition popup
+    window.addEventListener('resize', function() {
         if (popup && popup.style.opacity === '1') {
-            console.log('🖱️ Clicked outside popup - hiding popup');
+            console.log('🔄 Resize detected - repositioning popup');
+            positionPopupInViewport();
+        }
+    });
+    
+    // Handle scroll to keep popup visible and within viewport
+    window.addEventListener('scroll', function() {
+        if (popup && popup.style.opacity === '1') {
+            console.log('📜 Scroll detected - repositioning popup to stay in viewport');
+            positionPopupInViewport();
+        }
+          }, { passive: true });
+    
+    // Handle Escape key to close popup
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape' && popup && popup.style.opacity === '1') {
+            console.log('⌨️ Escape key pressed - closing popup');
             hidePopup();
             
-            // Also clear selection and hide icon since user clicked away
+            // Also clear selection and hide icon
             setTimeout(() => {
                 const selection = window.getSelection();
                 if (selection) {
@@ -5166,29 +5780,8 @@ function setupSelectionListeners() {
                     hideIcon();
                 }
             }, 100);
-            return;
-        }
-        
-        // Check if there's still selection after click (with delay to avoid conflict)
-        setTimeout(() => {
-            console.log('🖱️ Checking selection after outside click');
-            handleSelectionChange();
-        }, 150);
-    });
-    
-    // Handle window resize to reposition popup
-    window.addEventListener('resize', function() {
-        if (popup && popup.style.opacity === '1') {
-            positionPopup();
         }
     });
-    
-    // Handle scroll to reposition popup
-    window.addEventListener('scroll', function() {
-        if (popup && popup.style.opacity === '1') {
-            positionPopup();
-        }
-    }, { passive: true });
 }
 
 
@@ -5513,9 +6106,7 @@ function showDonationDialog() {
         
         <!-- Content -->
         <div style="padding: 18px;">
-            <p style="margin: 0 0 16px; color: #64748b; font-size: 13px; text-align: center; line-height: 1.4;">
-                Support development with a crypto donation. Every contribution helps add new features.
-            </p>
+
             
             <!-- Crypto Addresses -->
                             <div style="background: #f8fafc; border-radius: 8px; padding: 14px; margin-bottom: 16px;">
@@ -5838,48 +6429,7 @@ function setupMainDonationHandlers() {
     });
 }
 
-// Copy donation address to clipboard (legacy - can be removed)
-function copyDonationAddress(address, element) {
-    navigator.clipboard.writeText(address).then(() => {
-        // Visual feedback
-        const originalIcon = element.querySelector('svg');
-        const checkIcon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-        checkIcon.setAttribute('width', '18');
-        checkIcon.setAttribute('height', '18');
-        checkIcon.setAttribute('viewBox', '0 0 24 24');
-        checkIcon.setAttribute('fill', 'none');
-        checkIcon.setAttribute('stroke', '#16a34a');
-        checkIcon.setAttribute('stroke-width', '2');
-        checkIcon.innerHTML = '<polyline points="20,6 9,17 4,12"></polyline>';
-        
-        element.style.borderColor = '#16a34a';
-        element.style.background = '#f0fdf4';
-        originalIcon.parentNode.replaceChild(checkIcon, originalIcon);
-        
-        setTimeout(() => {
-            element.style.borderColor = '#e2e8f0';
-            element.style.background = 'white';
-            checkIcon.parentNode.replaceChild(originalIcon, checkIcon);
-        }, 2000);
-    }).catch(err => {
-        console.error('Could not copy address: ', err);
-        // Fallback for older browsers
-        const textArea = document.createElement('textarea');
-        textArea.value = address;
-        document.body.appendChild(textArea);
-        textArea.select();
-        document.execCommand('copy');
-        document.body.removeChild(textArea);
-        
-        // Visual feedback
-        element.style.borderColor = '#16a34a';
-        element.style.background = '#f0fdf4';
-        setTimeout(() => {
-            element.style.borderColor = '#e2e8f0';
-            element.style.background = 'white';
-        }, 2000);
-    });
-}
+
 
 // Listen for messages from popup and options page
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -5951,8 +6501,29 @@ async function initializeExtension() {
             return;
         }
         
-        // Load settings first
-        currentSettings = await getExtensionSettings();
+        // Clean any legacy Finglish settings first
+        await cleanLegacyFinglishSettings();
+        
+        // Load settings first with timeout and fallback
+        try {
+            currentSettings = await Promise.race([
+                getExtensionSettings(),
+                new Promise((_, reject) => setTimeout(() => reject(new Error('Settings load timeout')), 2000))
+            ]);
+            console.log('✅ Settings loaded successfully');
+        } catch (settingsError) {
+            console.warn('⚠️ Settings load failed, using defaults:', settingsError.message);
+            currentSettings = getDefaultSettings();
+        }
+        
+        // Pre-warm Google Translate API to avoid first-use delays
+        try {
+            console.log('🔥 Pre-warming Google Translate API...');
+            await translateWithGoogle('test', 'en', 'fa', currentSettings);
+            console.log('✅ Google Translate API pre-warmed');
+        } catch (preWarmError) {
+            console.warn('⚠️ Pre-warming failed (not critical):', preWarmError.message);
+        }
         
     createIcon();
     createPopup();
@@ -5963,6 +6534,7 @@ async function initializeExtension() {
     
     // Monitor DOM changes for sites that dynamically modify content
     const observer = new MutationObserver((mutations) => {
+        try {
         let iconRemoved = false;
         mutations.forEach((mutation) => {
             if (mutation.type === 'childList') {
@@ -5976,6 +6548,10 @@ async function initializeExtension() {
         
             if (iconRemoved && !isContextInvalidated) {
             createIcon();
+            }
+        } catch (error) {
+            // Silently handle mutation observer errors to prevent interference
+            console.warn('Extension mutation observer error (non-critical):', error);
         }
     });
     
@@ -6162,22 +6738,6 @@ function setupGlobalEventListeners() {
             setTimeout(handleViewportChange, 50);
         }
     });
-    
-    // Detect zoom via Ctrl+Wheel (immediate detection)
-    document.addEventListener('wheel', (e) => {
-        if (e.ctrlKey) {
-            console.log('⚡ Ctrl+Wheel zoom detected - immediate closure');
-            setTimeout(handleViewportChange, 50); // Small delay to let zoom take effect
-        }
-    }, { passive: true });
-    
-    // Detect zoom via keyboard shortcuts
-    document.addEventListener('keydown', (e) => {
-        if (e.ctrlKey && (e.key === '+' || e.key === '-' || e.key === '=' || e.key === '0')) {
-            console.log('⚡ Keyboard zoom detected - immediate closure');
-            setTimeout(handleViewportChange, 50);
-        }
-    });
 
     // Detect zoom changes via matchMedia
     setupZoomDetection();
@@ -6189,18 +6749,28 @@ function handleViewportChange() {
     
     // Force close everything immediately
     if (popup) {
+        // Store reference before hidePopup() sets it to null
+        const popupElement = popup;
         hidePopup();
-        popup.style.display = 'none';
-        popup.style.opacity = '0';
-        popup.style.pointerEvents = 'none';
+        
+        // Apply additional styles to ensure it's hidden
+        if (popupElement && popupElement.parentNode) {
+            popupElement.style.display = 'none';
+            popupElement.style.opacity = '0';
+            popupElement.style.pointerEvents = 'none';
+        }
     }
     
     if (selectionIcon) {
+        // Store reference before hideIcon() potentially sets it to null
+        const iconElement = selectionIcon;
         hideIcon();
-        if (selectionIcon) {  // Double check after hideIcon() call
-            selectionIcon.style.display = 'none';
-            selectionIcon.style.opacity = '0';
-            selectionIcon.style.pointerEvents = 'none';
+        
+        // Apply additional styles to ensure it's hidden
+        if (iconElement && iconElement.parentNode) {
+            iconElement.style.display = 'none';
+            iconElement.style.opacity = '0';
+            iconElement.style.pointerEvents = 'none';
         }
     }
     
@@ -6665,7 +7235,7 @@ function checkAndShowSelection() {
             backupElementInfo = {
                 tagName: activeElement.tagName,
                 id: activeElement.id,
-                className: activeElement.className,
+                className: safeGetClassName(activeElement),
                 placeholder: activeElement.placeholder || ''
             };
         }
@@ -6836,3 +7406,41 @@ function showIconAtExactMousePosition() {
         hideIcon();
     }
 }
+
+// Listen for storage changes to update settings and engine info
+chrome.storage.onChanged.addListener(async (changes, namespace) => {
+    if (namespace === 'sync') {
+        console.log('🔧 Storage changes detected:', changes);
+        
+        // Reload all settings when any setting changes
+        try {
+            currentSettings = await getExtensionSettings();
+            console.log('✅ Settings reloaded in content script:', currentSettings);
+            
+            // Update engine display if engine changed
+            if (changes.translationEngine) {
+                await updateEngineDisplay(changes.translationEngine.newValue);
+                console.log('🔧 Engine display updated to:', changes.translationEngine.newValue);
+            }
+            
+            // Reset translation state to prevent stuck states
+            if (isTranslating) {
+                console.log('🔄 Resetting translation state due to settings change');
+                isTranslating = false;
+                if (translationTimeout) {
+                    clearTimeout(translationTimeout);
+                    translationTimeout = null;
+                }
+                // Hide loading states
+                if (popup) {
+                    const loadingElement = popup.querySelector('.loading');
+                    if (loadingElement) {
+                        loadingElement.style.display = 'none';
+                    }
+                }
+            }
+        } catch (error) {
+            console.error('Error handling storage changes:', error);
+        }
+    }
+});

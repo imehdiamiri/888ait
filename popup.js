@@ -5,8 +5,11 @@ const translateBtn = document.getElementById('translate-btn');
 const btnText = document.getElementById('btn-text');
 const translationResult = document.getElementById('translation-result');
 const copyBtn = document.getElementById('copy-btn');
+const speakTranslationBtn = document.getElementById('speak-translation-btn');
 const optionsBtn = document.getElementById('go-to-options');
 const engineInfo = document.getElementById('engine-info');
+const engineDisplay = document.getElementById('engine-display');
+const engineSelector = document.getElementById('engine-selector');
 const speakOriginalBtn = document.getElementById('speak-original-btn');
 const grammarBtn = document.getElementById('grammar-btn');
 const grammarResultSection = document.getElementById('grammar-result-section');
@@ -52,8 +55,7 @@ function getDefaultSettings() {
         geminiApiKey: '',
         openaiApiKey: '',
         anthropicApiKey: '',
-        libretranslateUrl: 'https://libretranslate.com',
-        libretranslateApiKey: ''
+
     };
 }
 
@@ -313,6 +315,210 @@ Text to translate: "${text}"`
     throw new Error('OpenAI translation failed - no valid response received');
 }
 
+// Anthropic Claude engine - copied from content.js
+async function translateWithAnthropic(text, sourceLang, targetLang, settings) {
+    const apiKey = settings.anthropicApiKey;
+    if (!apiKey) {
+        throw new Error('Anthropic API key is required');
+    }
+    
+    const sourceLanguage = getLanguageName(sourceLang);
+    const targetLanguage = getLanguageName(targetLang);
+    
+    const prompt = settings.contextAwareTranslation 
+        ? `Translate the following text from ${sourceLanguage} to ${targetLanguage}. Provide a natural, contextually appropriate translation that maintains the original meaning and tone. If the text contains multiple languages, translate each part appropriately:\n\n"${text}"\n\nTranslation:`
+        : `Translate this text from ${sourceLanguage} to ${targetLanguage}:\n\n"${text}"\n\nTranslation:`;
+    
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+            'x-api-key': apiKey,
+            'Content-Type': 'application/json',
+            'anthropic-version': '2023-06-01'
+        },
+        body: JSON.stringify({
+            model: 'claude-3-haiku-20240307',
+            max_tokens: 1000,
+            messages: [{
+                role: 'user',
+                content: prompt
+            }]
+        })
+    });
+    
+    if (!response.ok) {
+        if (response.status === 429) {
+            throw new Error('Anthropic rate limit exceeded. Please wait a moment and try again, or switch to a different translation engine.');
+        } else if (response.status === 401) {
+            throw new Error('Anthropic API key is invalid. Please check your API key in settings.');
+        } else if (response.status === 402) {
+            throw new Error('Anthropic billing issue. Please check your account billing.');
+        } else {
+            throw new Error(`Anthropic API error: ${response.status} - ${response.statusText}`);
+        }
+    }
+    
+    const data = await response.json();
+    if (data && data.content && data.content[0] && data.content[0].text) {
+        return data.content[0].text.trim();
+    }
+    
+    throw new Error('Failed to get Anthropic translation');
+}
+
+// DeepSeek AI engine
+async function translateWithDeepSeek(text, sourceLang, targetLang, settings) {
+    const apiKey = settings.deepseekApiKey;
+    if (!apiKey) {
+        throw new Error('DeepSeek API key is required');
+    }
+    
+    const sourceLanguage = getLanguageName(sourceLang);
+    const targetLanguage = getLanguageName(targetLang);
+    
+    const prompt = settings.contextAwareTranslation 
+        ? `Translate the following text from ${sourceLanguage} to ${targetLanguage}. Provide a natural, contextually appropriate translation that maintains the original meaning and tone. If the text contains multiple languages, translate each part appropriately:\n\n"${text}"\n\nTranslation:`
+        : `Translate this text from ${sourceLanguage} to ${targetLanguage}:\n\n"${text}"\n\nTranslation:`;
+    
+    const response = await fetch('https://api.deepseek.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+            'Authorization': `Bearer ${apiKey}`,
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            model: 'deepseek-chat',
+            messages: [{
+                role: 'user',
+                content: prompt
+            }],
+            max_tokens: 1000,
+            temperature: 0.3
+        })
+    });
+    
+    if (!response.ok) {
+        if (response.status === 429) {
+            throw new Error('DeepSeek rate limit exceeded. Please wait a moment and try again, or switch to a different translation engine.');
+        } else if (response.status === 401) {
+            throw new Error('DeepSeek API key is invalid. Please check your API key in settings.');
+        } else if (response.status === 402) {
+            throw new Error('DeepSeek billing issue. Please check your account billing.');
+        } else {
+            throw new Error(`DeepSeek API error: ${response.status} - ${response.statusText}`);
+        }
+    }
+    
+    const data = await response.json();
+    if (data && data.choices && data.choices[0] && data.choices[0].message) {
+        return data.choices[0].message.content.trim();
+    }
+    
+    throw new Error('Failed to get DeepSeek translation');
+}
+
+// Grok AI engine (X.AI)
+async function translateWithGrok(text, sourceLang, targetLang, settings) {
+    const apiKey = settings.grokApiKey;
+    if (!apiKey) {
+        throw new Error('Grok API key is required');
+    }
+    
+    const sourceLanguage = getLanguageName(sourceLang);
+    const targetLanguage = getLanguageName(targetLang);
+    
+    const prompt = settings.contextAwareTranslation 
+        ? `Translate the following text from ${sourceLanguage} to ${targetLanguage}. Provide a natural, contextually appropriate translation that maintains the original meaning and tone. If the text contains multiple languages, translate each part appropriately:\n\n"${text}"\n\nTranslation:`
+        : `Translate this text from ${sourceLanguage} to ${targetLanguage}:\n\n"${text}"\n\nTranslation:`;
+    
+    const response = await fetch('https://api.x.ai/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+            'Authorization': `Bearer ${apiKey}`,
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            model: 'grok-beta',
+            messages: [{
+                role: 'user',
+                content: prompt
+            }],
+            max_tokens: 1000,
+            temperature: 0.3
+        })
+    });
+    
+    if (!response.ok) {
+        if (response.status === 429) {
+            throw new Error('Grok rate limit exceeded. Please wait a moment and try again, or switch to a different translation engine.');
+        } else if (response.status === 401) {
+            throw new Error('Grok API key is invalid. Please check your API key in settings.');
+        } else if (response.status === 402) {
+            throw new Error('Grok billing issue. Please check your account billing.');
+        } else {
+            throw new Error(`Grok API error: ${response.status} - ${response.statusText}`);
+        }
+    }
+    
+    const data = await response.json();
+    if (data && data.choices && data.choices[0] && data.choices[0].message) {
+        return data.choices[0].message.content.trim();
+    }
+    
+    throw new Error('Failed to get Grok translation');
+}
+
+// Groq AI engine
+async function translateWithGroq(text, sourceLang, targetLang, settings) {
+    const apiKey = settings.groqApiKey;
+    if (!apiKey) {
+        throw new Error('Groq API key is required');
+    }
+    
+    const sourceLanguage = getLanguageName(sourceLang);
+    const targetLanguage = getLanguageName(targetLang);
+    
+    const prompt = settings.contextAwareTranslation 
+        ? `Translate the following text from ${sourceLanguage} to ${targetLanguage}. Provide a natural, contextually appropriate translation that maintains the original meaning and tone. If the text contains multiple languages, translate each part appropriately:\n\n"${text}"\n\nTranslation:`
+        : `Translate this text from ${sourceLanguage} to ${targetLanguage}:\n\n"${text}"\n\nTranslation:`;
+    
+    const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+            'Authorization': `Bearer ${apiKey}`,
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            model: 'llama-3.1-70b-versatile',
+            messages: [{
+                role: 'user',
+                content: prompt
+            }],
+            max_tokens: 1000,
+            temperature: 0.3
+        })
+    });
+    
+    if (!response.ok) {
+        if (response.status === 429) {
+            throw new Error('Groq rate limit exceeded. Please wait a moment and try again, or switch to a different translation engine.');
+        } else if (response.status === 401) {
+            throw new Error('Groq API key is invalid. Please check your API key in settings.');
+        } else if (response.status === 402) {
+            throw new Error('Groq billing issue. Please check your account billing.');
+        } else {
+            throw new Error(`Groq API error: ${response.status} - ${response.statusText}`);
+        }
+    }
+    
+    const data = await response.json();
+    if (data && data.choices && data.choices[0] && data.choices[0].message) {
+        return data.choices[0].message.content.trim();
+    }
+    
+    throw new Error('Failed to get Groq translation');
+}
+
 // Main translation function that routes to different engines - exact copy from content.js
 async function translateText(text, sourceLang, targetLang) {
     const settings = currentSettings || await getExtensionSettings();
@@ -325,6 +531,12 @@ async function translateText(text, sourceLang, targetLang) {
         return 'OpenAI API key is required. Please add your API key in the extension settings.';
     } else if (engine === 'anthropic' && !settings.anthropicApiKey) {
         return 'Anthropic API key is required. Please add your API key in the extension settings.';
+    } else if (engine === 'deepseek' && !settings.deepseekApiKey) {
+        return 'DeepSeek API key is required. Please add your API key in the extension settings.';
+    } else if (engine === 'grok' && !settings.grokApiKey) {
+        return 'Grok API key is required. Please add your API key in the extension settings.';
+    } else if (engine === 'groq' && !settings.groqApiKey) {
+        return 'Groq API key is required. Please add your API key in the extension settings.';
     }
     
     try {
@@ -339,6 +551,18 @@ async function translateText(text, sourceLang, targetLang) {
                 break;
             case 'openai':
                 result = await translateWithOpenAI(text, sourceLang, targetLang, settings);
+                break;
+            case 'anthropic':
+                result = await translateWithAnthropic(text, sourceLang, targetLang, settings);
+                break;
+            case 'deepseek':
+                result = await translateWithDeepSeek(text, sourceLang, targetLang, settings);
+                break;
+            case 'grok':
+                result = await translateWithGrok(text, sourceLang, targetLang, settings);
+                break;
+            case 'groq':
+                result = await translateWithGroq(text, sourceLang, targetLang, settings);
                 break;
             default:
                 // Default to Google Translate (free) if unknown engine
@@ -381,7 +605,7 @@ async function initialize() {
         }
         
         // Update engine info display
-        updateEngineInfo(currentSettings.translationEngine);
+        await updateEngineInfo(currentSettings.translationEngine);
         
         console.log('Popup initialized with engine:', currentSettings.translationEngine);
     } catch (error) {
@@ -389,20 +613,149 @@ async function initialize() {
     }
 }
 
-// Update engine info in header
-function updateEngineInfo(engine) {
-    const engineNames = {
-        'free': 'Free',
-        'google': 'Free', 
-        'gemini': 'Gemini',
-        'openai': 'GPT-4',
-        'anthropic': 'Claude'
-    };
+// Update engine display and selector
+async function updateEngineInfo(engineOverride = null) {
+    if (!engineDisplay || !engineSelector) return;
     
-    if (engine === 'free' || engine === 'google') {
-        engineInfo.innerHTML = `Engine: ${engineNames[engine] || 'Free'} <span style="color: #dc3545;">(no AI)</span>`;
-    } else {
-        engineInfo.textContent = `Engine: ${engineNames[engine] || 'Free'}`;
+    const settings = currentSettings || await getExtensionSettings();
+    const engine = engineOverride || settings.translationEngine || 'free';
+    
+    // Format engine name for display
+    let engineDisplayName;
+    let selectorValue = engine;
+    
+    switch (engine) {
+        case 'free':
+        case 'google':
+            engineDisplayName = 'Free';
+            selectorValue = 'free'; // Always use 'free' for selector
+            break;
+        case 'gemini':
+            engineDisplayName = 'Gemini';
+            break;
+        case 'openai':
+            // For OpenAI, try to get the actual model being used
+            try {
+                const bestModel = await getBestOpenAIModel(settings.openaiApiKey);
+                engineDisplayName = bestModel.includes('gpt-4') ? 'GPT-4' : 
+                                   bestModel.includes('gpt-3.5') ? 'GPT-3.5' : 
+                                   'OpenAI';
+            } catch (error) {
+                engineDisplayName = 'OpenAI';
+            }
+            break;
+        case 'anthropic':
+            engineDisplayName = 'Claude';
+            break;
+        case 'deepseek':
+            engineDisplayName = 'DeepSeek';
+            break;
+        case 'grok':
+            engineDisplayName = 'Grok';
+            break;
+        case 'groq':
+            engineDisplayName = 'Groq';
+            break;
+        default:
+            engineDisplayName = engine.charAt(0).toUpperCase() + engine.slice(1);
+    }
+    
+    // Update display text
+    engineDisplay.textContent = engineDisplayName;
+    
+    // Update selector value (use 'free' for both 'free' and 'google')
+    engineSelector.value = selectorValue;
+}
+
+// Test OpenAI API key and get available models
+async function testOpenAIKey(apiKey) {
+    console.log('🧪 Testing OpenAI API key...');
+    try {
+        const response = await fetch('https://api.openai.com/v1/models', {
+            headers: {
+                'Authorization': `Bearer ${apiKey}`,
+            }
+        });
+        
+        console.log('🧪 Test response status:', response.status);
+        
+        if (response.ok) {
+        const data = await response.json();
+            const availableModels = data.data || [];
+            console.log('✅ OpenAI API key is valid. Available models:', availableModels.length);
+            
+            // Log some model names for debugging
+            const modelNames = availableModels.map(m => m.id).slice(0, 10);
+            console.log('🧪 First 10 models:', modelNames);
+            
+            return { valid: true, models: availableModels };
+        } else {
+            const errorData = await response.json();
+            console.log('❌ OpenAI API key test failed:', errorData);
+            return { valid: false, error: errorData };
+        }
+    } catch (error) {
+        console.log('❌ OpenAI API key test error:', error);
+        return { valid: false, error: error.message };
+    }
+}
+
+// Get best available OpenAI model for translation
+async function getBestOpenAIModel(apiKey) {
+    console.log('🤖 Getting best available OpenAI model...');
+    
+    try {
+        const testResult = await testOpenAIKey(apiKey);
+        
+        if (!testResult.valid || !testResult.models) {
+            console.log('🤖 Fallback to gpt-4o-mini (no model list available)');
+            return 'gpt-4o-mini';
+        }
+        
+        const availableModels = testResult.models.map(m => m.id);
+        console.log('🤖 Checking for preferred models in:', availableModels.length, 'available models');
+        
+        // Preferred models in order of SPEED (fastest first for translation)
+        const preferredModels = [
+            'gpt-4o-mini',          // Fastest and cheapest
+            'gpt-3.5-turbo',        // Fast classic
+            'gpt-3.5-turbo-0125',   // Fast variant
+            'gpt-3.5-turbo-1106',   // Fast variant
+            'gpt-4o',               // Slower but good quality
+            'gpt-4-turbo',          // Slower
+            'gpt-4'                 // Slowest
+        ];
+        
+        // Find the first available preferred model
+        for (const model of preferredModels) {
+            if (availableModels.includes(model)) {
+                console.log('🤖 Selected model:', model);
+                return model;
+            }
+        }
+        
+        // If no preferred model found, use the first available chat model
+        const chatModels = availableModels.filter(id => 
+            id.includes('gpt') && 
+            !id.includes('instruct') && 
+            !id.includes('embedding') &&
+            !id.includes('whisper') &&
+            !id.includes('tts') &&
+            !id.includes('dall-e')
+        );
+        
+        if (chatModels.length > 0) {
+            console.log('🤖 Using first available chat model:', chatModels[0]);
+            return chatModels[0];
+        }
+        
+        // Ultimate fallback
+        console.log('🤖 Using ultimate fallback: gpt-4o-mini');
+        return 'gpt-4o-mini';
+        
+    } catch (error) {
+        console.error('🤖 Error getting best model:', error);
+        return 'gpt-4o-mini';
     }
 }
 
@@ -425,7 +778,7 @@ function showTranslation(text, targetLanguage) {
     const isRTL = rtlLanguages.includes(targetLanguage);
     
     translationResult.innerHTML = `
-        <div class="${isRTL ? 'rtl-text' : ''}">${text}</div>
+        <div class="${isRTL ? 'rtl-text' : ''}" style="text-align: center !important;">${text}</div>
     `;
     
     translationResult.classList.add('show');
@@ -450,11 +803,14 @@ async function performTranslation() {
     // Hide any previous error messages
     hideError();
     
-    const text = inputText.value.trim();
+    let text = inputText.value.trim();
+    
+    // Apply same text cleaning as main popup for consistency
+    text = cleanTextForTranslation(text);
     const target = targetLang.value;
     
     if (!text) {
-        showError('Please enter text to translate');
+        showError('Please select text on the page or enter text to translate');
         return;
     }
     
@@ -486,7 +842,7 @@ async function performTranslation() {
     }
 }
 
-// Text-to-speech for original text
+// Text-to-speech for original text with pause functionality
 function speakOriginalText() {
     const text = inputText.value.trim();
     if (!text) {
@@ -499,19 +855,47 @@ function speakOriginalText() {
         return;
     }
     
-    // Stop any ongoing speech
-    speechSynthesis.cancel();
+    // Check if speech is currently playing
+    if (speechSynthesis.speaking) {
+        // Pause/stop speech
+        speechSynthesis.cancel();
+        
+        // Restore original play icon
+        speakOriginalBtn.innerHTML = `
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6c757d" stroke-width="2">
+                <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+                <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+            </svg>
+        `;
+        return;
+    }
+    
+    // Change to pause icon
+    speakOriginalBtn.innerHTML = `
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="2">
+            <rect x="6" y="4" width="4" height="16"></rect>
+            <rect x="14" y="4" width="4" height="16"></rect>
+        </svg>
+    `;
     
     const utterance = new SpeechSynthesisUtterance(text);
     
+    // Add event listeners for debugging
+    utterance.onstart = () => console.log('✅ Original text speech started');
+    utterance.onend = () => console.log('✅ Original text speech ended');
+    utterance.onerror = (e) => console.error('❌ Original text speech error:', e.error, e);
+    
     // Try to set language based on detected language (basic detection)
     const sourceLanguage = detectSourceLanguage(text);
+    console.log('🔊 Detected source language:', sourceLanguage, 'for text:', text.substring(0, 30));
+    
     if (sourceLanguage) {
         utterance.lang = sourceLanguage;
     }
     
     // Find a natural voice for the language
     const voices = speechSynthesis.getVoices();
+    console.log('🔊 Available voices in popup:', voices.length);
     const preferredVoice = voices.find(voice => 
         voice.lang.startsWith(sourceLanguage?.substring(0, 2) || 'en') && 
         voice.name.toLowerCase().includes('natural')
@@ -527,13 +911,164 @@ function speakOriginalText() {
     utterance.pitch = 1.0;
     utterance.volume = 1.0;
     
+    // Restore play icon when speech ends
+    const checkSpeechEnd = setInterval(() => {
+        if (!speechSynthesis.speaking) {
+            clearInterval(checkSpeechEnd);
+            if (speakOriginalBtn) {
+                speakOriginalBtn.innerHTML = `
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6c757d" stroke-width="2">
+                        <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+                        <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+                    </svg>
+                `;
+            }
+        }
+    }, 100);
+    
+    speechSynthesis.speak(utterance);
+}
+
+// Text-to-speech for translation result with pause functionality
+function speakTranslationText() {
+    // Get translation text from the result div
+    const translationDiv = translationResult.querySelector('div:not(.error)');
+    const text = translationDiv ? (translationDiv.textContent || translationDiv.innerText || '').trim() : '';
+    
+    if (!text) {
+        showError('No translation to speak.');
+        return;
+    }
+    
+    if (!('speechSynthesis' in window)) {
+        showError('Text-to-speech is not supported in your browser.');
+        return;
+    }
+    
+    // Check if speech is currently playing
+    if (speechSynthesis.speaking) {
+        // Pause/stop speech
+        speechSynthesis.cancel();
+        
+        // Restore original play icon
+        speakTranslationBtn.innerHTML = `
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+                <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+            </svg>
+        `;
+        return;
+    }
+    
+    // Change to pause icon
+    speakTranslationBtn.innerHTML = `
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="2">
+            <rect x="6" y="4" width="4" height="16"></rect>
+            <rect x="14" y="4" width="4" height="16"></rect>
+        </svg>
+    `;
+    
+    const utterance = new SpeechSynthesisUtterance(text);
+    
+    // Add event listeners for debugging
+    utterance.onstart = () => console.log('✅ Translation speech started');
+    utterance.onend = () => console.log('✅ Translation speech ended');
+    utterance.onerror = (e) => console.error('❌ Translation speech error:', e.error, e);
+    
+    // Set language to target language  
+    const targetLanguage = targetLang.value;
+    let actualLang = targetLanguage;
+    console.log('🔊 Target language for translation speech:', targetLanguage);
+    
+    // Map language codes to full locale codes for better voice support
+    const langMap = {
+        'fa': 'fa-IR',
+        'ar': 'ar-SA',
+        'en': 'en-US',
+        'es': 'es-ES',
+        'fr': 'fr-FR',
+        'de': 'de-DE',
+        'it': 'it-IT',
+        'pt': 'pt-BR',
+        'ru': 'ru-RU',
+        'ja': 'ja-JP',
+        'ko': 'ko-KR',
+        'zh': 'zh-CN'
+    };
+    
+    if (targetLanguage && targetLanguage !== 'auto') {
+        actualLang = langMap[targetLanguage] || targetLanguage;
+        utterance.lang = actualLang;
+    }
+    
+    // Find a natural voice for the target language
+    const voices = speechSynthesis.getVoices();
+    const langCode = targetLanguage?.substring(0, 2) || 'en';
+    
+    const preferredVoice = voices.find(voice => 
+        voice.lang.toLowerCase().startsWith(langCode) && 
+        (voice.name.toLowerCase().includes('natural') ||
+         voice.name.toLowerCase().includes('neural') ||
+         voice.name.toLowerCase().includes('premium'))
+    ) || voices.find(voice => 
+        voice.lang.toLowerCase().startsWith(langCode)
+    );
+    
+    if (preferredVoice) {
+        utterance.voice = preferredVoice;
+        console.log('🔊 Using voice for translation:', preferredVoice.name, 'Lang:', preferredVoice.lang);
+    } else {
+        console.log('🔊 No preferred voice found for lang:', langCode, 'Available voices:', 
+            voices.filter(v => v.lang.toLowerCase().startsWith(langCode)).map(v => v.name + ' (' + v.lang + ')'));
+        
+        // Final fallback for Persian
+        if (langCode === 'fa') {
+            console.log('🔊 Trying Persian fallbacks in popup...');
+            const persianCodes = ['fa-IR', 'fa', 'per'];
+            for (const code of persianCodes) {
+                const fallbackVoice = voices.find(v => v.lang.toLowerCase() === code.toLowerCase());
+                if (fallbackVoice) {
+                    utterance.voice = fallbackVoice;
+                    utterance.lang = fallbackVoice.lang;
+                    console.log('🔊 Found fallback Persian voice in popup:', fallbackVoice.name);
+                    break;
+                }
+            }
+        }
+    }
+    
+    utterance.rate = 1.0;
+    utterance.pitch = 1.0;
+    utterance.volume = 1.0;
+    
+    console.log('🔊 Final popup translation speech - Voice:', utterance.voice?.name || 'Browser default', 'Lang:', utterance.lang);
+    
+    // Restore play icon when speech ends
+    const checkSpeechEnd = setInterval(() => {
+        if (!speechSynthesis.speaking) {
+            clearInterval(checkSpeechEnd);
+            if (speakTranslationBtn) {
+                speakTranslationBtn.innerHTML = `
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+                        <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+                    </svg>
+                `;
+            }
+        }
+    }, 100);
+    
     speechSynthesis.speak(utterance);
 }
 
 // Simple language detection for speech
 function detectSourceLanguage(text) {
     // Basic language detection based on character sets
-    if (/[\u0600-\u06FF]/.test(text)) return 'ar'; // Arabic
+    if (/[\u0600-\u06FF]/.test(text)) {
+        // More specific check for Persian vs Arabic
+        if (/[\u06CC\u06A9\u06AF\u067E\u0686\u0698]/.test(text)) return 'fa'; // Persian specific chars
+        return 'ar'; // Arabic
+    }
     if (/[\u0590-\u05FF]/.test(text)) return 'he'; // Hebrew
     if (/[\u4e00-\u9fff]/.test(text)) return 'zh'; // Chinese
     if (/[\u3040-\u309F\u30A0-\u30FF]/.test(text)) return 'ja'; // Japanese
@@ -543,6 +1078,50 @@ function detectSourceLanguage(text) {
     if (/[\u00C0-\u00FF]/.test(text)) return 'fr'; // French (with accents)
     if (/[àáäâèéëêìíïîòóöôùúüûñç]/.test(text.toLowerCase())) return 'es'; // Spanish
     return 'en'; // Default to English
+}
+
+// Clean text for translation (matching content.js behavior)
+function cleanTextForTranslation(text) {
+    if (!text) return '';
+    
+    // Remove common UI elements that get accidentally included
+    const cleanPatterns = [
+        // Remove standalone numbers that look like UI elements
+        /^\s*\d{1,4}\s*$/g,
+        // Remove standalone "Select" or similar UI text
+        /^\s*(Select|Choose|Click|Submit|Cancel|Login|Signup|Menu|Close)\s*$/gi,
+        // Remove common button patterns
+        /^\s*(Select\s+models?|Choose\s+models?|Add\s+models?|Configure\s+models?)\s*$/gi,
+        /^\s*(Select\s+items?|Choose\s+items?|Add\s+items?|Remove\s+items?)\s*$/gi,
+        /^\s*(Select\s+all|Choose\s+all|Add\s+all|Remove\s+all)\s*$/gi,
+        /^\s*(Select\s+files?|Choose\s+files?|Browse\s+files?|Upload\s+files?)\s*$/gi,
+        /^\s*(View\s+more|Show\s+more|Load\s+more|See\s+more)\s*$/gi,
+        // Remove our extension icon text if it gets included
+        /^\s*888\s*$/g,
+        /\s*888\s*$/g,  // Remove trailing 888
+        /^\s*888\s*/g,  // Remove leading 888
+    ];
+    
+    let cleanedText = text;
+    
+    // Apply cleaning patterns
+    cleanPatterns.forEach(pattern => {
+        cleanedText = cleanedText.replace(pattern, '');
+    });
+    
+    // Clean up the text formatting like content.js does
+    cleanedText = cleanedText
+        .replace(/\n\s*888\s*\n/g, '\n')
+        .replace(/\n\s*Select models?\s*\n/gi, '\n')
+        .replace(/^\s*888\s*\n/g, '')
+        .replace(/\n\s*888\s*$/g, '')
+        .replace(/^\s*Select models?\s*\n/gi, '')
+        .replace(/\n\s*Select models?\s*$/gi, '')
+        .replace(/\n\s*\n/g, '\n')
+        .replace(/\s+/g, ' ') // Multiple spaces to single
+        .trim();
+    
+    return cleanedText;
 }
 
 // Grammar check functionality (copied from content.js)
@@ -811,7 +1390,77 @@ targetLang.addEventListener('change', () => {
     }
 });
 
+// Engine selector event listener
+engineSelector.addEventListener('change', async (event) => {
+    console.log('🔧 Engine changed to:', event.target.value);
+    
+    const newEngine = event.target.value;
+    
+    try {
+        // Get current settings to check API keys
+        const settings = await getExtensionSettings();
+        
+        // Validate API keys for premium engines
+        if (newEngine === 'gemini' && !settings.geminiApiKey) {
+            showError('Please enter Gemini API key in Options first');
+            // Revert selector to current engine
+            await updateEngineInfo(settings.translationEngine);
+            return;
+        } else if (newEngine === 'openai' && !settings.openaiApiKey) {
+            showError('Please enter OpenAI API key in Options first');
+            // Revert selector to current engine
+            await updateEngineInfo(settings.translationEngine);
+            return;
+        } else if (newEngine === 'anthropic' && !settings.anthropicApiKey) {
+            showError('Please enter Claude API key in Options first');
+            // Revert selector to current engine
+            await updateEngineInfo(settings.translationEngine);
+            return;
+        } else if (newEngine === 'deepseek' && !settings.deepseekApiKey) {
+            showError('Please enter DeepSeek API key in Options first');
+            // Revert selector to current engine
+            await updateEngineInfo(settings.translationEngine);
+            return;
+        } else if (newEngine === 'grok' && !settings.grokApiKey) {
+            showError('Please enter Grok API key in Options first');
+            // Revert selector to current engine
+            await updateEngineInfo(settings.translationEngine);
+            return;
+        } else if (newEngine === 'groq' && !settings.groqApiKey) {
+            showError('Please enter Groq API key in Options first');
+            // Revert selector to current engine
+            await updateEngineInfo(settings.translationEngine);
+            return;
+        }
+        
+        // Save the new engine setting
+        settings.translationEngine = newEngine;
+        await chrome.storage.sync.set(settings);
+        
+        // Update current settings cache
+        currentSettings = settings;
+        
+        console.log('💾 Engine preference saved:', newEngine);
+        
+        // Update engine display
+        await updateEngineInfo(newEngine);
+        
+        // Auto-retranslate if text exists and translation is showing
+        if (inputText.value.trim() && translationResult.classList.contains('show')) {
+            console.log('🔄 Starting translation with new engine');
+            await performTranslation();
+            console.log('✅ Translation completed with new engine:', newEngine);
+        }
+        
+        } catch (error) {
+        console.error('Error updating engine:', error);
+        showError('Failed to change engine. Please try again.');
+    }
+});
+
 copyBtn.addEventListener('click', copyTranslation);
+
+speakTranslationBtn.addEventListener('click', speakTranslationText);
 
 speakOriginalBtn.addEventListener('click', speakOriginalText);
 
@@ -832,7 +1481,7 @@ chrome.storage.onChanged.addListener(async (changes, namespace) => {
         currentSettings = await getExtensionSettings();
         
         if (changes.translationEngine) {
-            updateEngineInfo(changes.translationEngine.newValue);
+            await updateEngineInfo(changes.translationEngine.newValue);
             console.log('Engine updated to:', changes.translationEngine.newValue);
         }
     }
@@ -880,9 +1529,7 @@ function showPinDonationDialog() {
         
         <!-- Content -->
         <div style="padding: 16px;">
-                         <p style="margin: 0 0 12px; color: #64748b; font-size: 12px; text-align: center; line-height: 1.3;">
-                 Support development with crypto. Every contribution helps!
-             </p>
+
             
                          <!-- Crypto Addresses -->
                             <div style="background: #f8fafc; border-radius: 6px; padding: 12px; margin-bottom: 12px;">

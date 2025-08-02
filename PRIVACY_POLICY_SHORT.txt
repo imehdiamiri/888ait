@@ -1,0 +1,13 @@
+888 AI Translator - Privacy Policy Summary
+
+• NO DATA COLLECTION: We don't collect, store, or transmit personal information
+• LOCAL STORAGE: API keys and settings stored locally in your browser only
+• NO TRACKING: No analytics, no behavior tracking, no browsing data access
+• API USAGE: Selected text sent only to your chosen AI services (Google, OpenAI, etc.)
+• YOUR CONTROL: Delete API keys anytime, uninstall removes all data
+• SECURE: All communications use HTTPS, data encrypted locally
+• NO SHARING: We don't share, sell, or use your data for marketing
+
+Full policy: https://github.com/imehdiamiri/888ait/blob/main/PRIVACY_POLICY.md
+
+Contact: https://github.com/imehdiamiri/888ait/issues
